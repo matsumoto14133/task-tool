@@ -1,13 +1,13 @@
 {
-  "compilerOptions": {
-    "target": "ES2017",
+  "compilerOptions": { // タイプスクリプトをどう変換するかの指定
+    "target": "ES2017", // JSのバージョン
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
-    "strict": true,
+    "strict": true, // 厳密な型チェックを有効にする
     "noEmit": true,
     "esModuleInterop": true,
-    "module": "esnext",
+    "module": "esnext", // JSのモジュール形式指定→環境に合わせて使い分け
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
@@ -18,11 +18,12 @@
         "name": "next"
       }
     ],
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./src/*"]
     }
   },
-  "include": [
+  "include": [ // どのファイルを型チェック対象にするか
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
@@ -30,5 +31,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules"] // 型チェックの対象から外すファイルやディレクトリ
 }

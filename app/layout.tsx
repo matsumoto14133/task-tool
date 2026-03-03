@@ -1,3 +1,4 @@
+// レイアウトの構造を決める（ヘッダーやフッター）↔️ globals.cssで全体のスタイル
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
