@@ -9,6 +9,13 @@ import { getDueMeta, dueBadgeClass, formatDue } from "@/lib/taskDue";
 type TaskStatus = "todo" | "doing" | "done" | "hold";
 type ScopeType = "branch" | "department" | "personal";
 
+type Membership = {
+  branch_id: string;
+  department_id: string | null;
+  role: "member" | "manager" | "admin";
+  branches?: { name: string } | null;
+};
+
 type Task = {
   id: string;
   title: string;
@@ -27,6 +34,21 @@ type Profile = {
   email: string;
   display_name: string | null;
 };
+
+function statusLabel(status: TaskStatus) {
+  switch (status) {
+    case "todo":
+      return "未着手";
+    case "doing":
+      return "進行中";
+    case "hold":
+      return "保留";
+    case "done":
+      return "完了";
+    default:
+      return status;
+  }
+}
 
 function dueTone(dueAt: string | null) {
   if (!dueAt) return "border-gray-200 bg-gray-50 text-gray-700";
@@ -62,6 +84,10 @@ export default function TaskDetailPage() {
 
   const [error, setError] = useState<string | null>(null);
 
+  const [me, setMe] = useState<{ id: string; email: string | null } | null>(null);
+  const [membership, setMembership] = useState<Membership | null>(null);
+  const isManager = membership?.role === "manager" || membership?.role === "admin";
+
   useEffect(() => {
     if (!taskId || !isUuid(taskId)) {
       setError("不正なタスクIDです");
@@ -78,6 +104,61 @@ export default function TaskDetailPage() {
     setLoading(true);
     setError(null);
 
+    // 0) user
+    const { data: userData, error: userErr } = await supabase.auth.getUser();
+    if (userErr) {
+      setError(userErr.message);
+      setLoading(false);
+      return;
+    }
+    if (!userData.user) {
+      router.replace("/login");
+      return;
+    }
+
+    // ✅ ログインユーザーIDはローカル変数として固定で使う
+    const myUserId = userData.user.id;
+
+    // stateにも保存（表示用）
+    setMe({ id: myUserId, email: userData.user.email ?? null });
+
+    // 0.5) membership（※ me?.id は使わない）
+    const { data: ms, error: msErr } = await supabase
+      .from("memberships")
+      .select("role, branch_id, department_id")
+      .eq("user_id", myUserId)
+      .limit(1);
+
+    if (msErr) {
+      setError(msErr.message);
+      setLoading(false);
+      return;
+    }
+
+    setMembership((ms?.[0] ?? null) as any);
+
+    const myBranchId = ms?.[0]?.branch_id;
+    if (!myBranchId) {
+      setError("branch_id を取得できませんでした");
+      setLoading(false);
+      return;
+    }
+
+    // A) 同一branchの memberships から user_id を取る
+    const { data: memList, error: memErr } = await supabase
+      .from("memberships")
+      .select("user_id")
+      .eq("branch_id", ms?.[0]?.branch_id)
+      .order("created_at", { ascending: true });
+
+    if (memErr) {
+      setError(memErr.message);
+      setLoading(false);
+      return;
+    }
+
+    const branchUserIds = (memList ?? []).map((r: any) => r.user_id as string);
+
     try {
       // 1) task本体
       const { data: taskData, error: taskErr } = await supabase
@@ -87,6 +168,7 @@ export default function TaskDetailPage() {
         .single();
 
       if (taskErr) throw taskErr;
+
       setTask(taskData as Task);
       setDescriptionDraft((taskData as Task).description ?? "");
 
@@ -97,6 +179,7 @@ export default function TaskDetailPage() {
         .eq("task_id", taskId);
 
       if (assigneesErr) throw assigneesErr;
+
       const ids = (assigneesData ?? []).map((r: { user_id: string }) => r.user_id);
       setAssigneeIds(ids);
 
@@ -104,9 +187,11 @@ export default function TaskDetailPage() {
       const { data: profilesData, error: profilesErr } = await supabase
         .from("profiles")
         .select("user_id,email,display_name")
+        .in("user_id", branchUserIds)
         .order("created_at", { ascending: true });
 
       if (profilesErr) throw profilesErr;
+
       setProfiles((profilesData ?? []) as Profile[]);
     } catch (e: any) {
       setError(e?.message ?? "読み込みに失敗しました");
@@ -115,10 +200,15 @@ export default function TaskDetailPage() {
     }
   }
 
-  async function updateDescription() {
+  async function updateDescription() {    
     if (!task) return;
     setSaving(true);
     setError(null);
+
+    if (!isManager) {
+      setError("説明の編集は manager / admin のみです");
+      return;
+    }
 
     try {
       const { error: updErr } = await supabase
@@ -137,7 +227,7 @@ export default function TaskDetailPage() {
     }
   }
 
-  async function updateStatus(next: TaskStatus) {
+  async function updateStatus(taskId: string, status: TaskStatus) {
     if (!task) return;
     setSaving(true);
     setError(null);
@@ -145,11 +235,11 @@ export default function TaskDetailPage() {
     try {
       const { error: updErr } = await supabase
         .from("tasks")
-        .update({ status: next })
+        .update({ status: status })
         .eq("id", task.id);
 
       if (updErr) throw updErr;
-      setTask({ ...task, status: next });
+      setTask({ ...task, status: status });
     } catch (e: any) {
       setError(e?.message ?? "ステータス更新に失敗しました");
     } finally {
@@ -264,17 +354,23 @@ export default function TaskDetailPage() {
 
           <div className="flex items-center gap-2">
             <span className="text-gray-500">進捗</span>
-            <select
-              value={task.status}
-              onChange={(e) => updateStatus(e.target.value as TaskStatus)}
-              className="border rounded-md px-2 py-1"
-              disabled={saving}
-            >
-              <option value="todo">未着手</option>
-              <option value="doing">進行中</option>
-              <option value="done">完了</option>
-              <option value="hold">保留</option>
-            </select>
+            {isManager ? (
+              <select
+                value={task.status}
+                onChange={(e) =>
+                  updateStatus(task.id, e.target.value as TaskStatus)
+                }
+              >
+                <option value="todo">未着手</option>
+                <option value="doing">進行中</option>
+                <option value="hold">保留</option>
+                <option value="done">完了</option>
+              </select>
+            ) : (
+              <div className="text-sm text-gray-700">
+                {statusLabel(task.status)}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -282,21 +378,26 @@ export default function TaskDetailPage() {
       {/* 説明（編集） */}
       <div className="border rounded-lg p-4 mb-4">
         <div className="font-semibold mb-2">説明</div>
-        <textarea
-          value={descriptionDraft}
-          onChange={(e) => setDescriptionDraft(e.target.value)}
-          className="w-full border rounded-md p-3 min-h-[140px]"
-          placeholder="説明を入力"
-        />
-        <div className="mt-3 flex justify-end">
-          <button
-            onClick={updateDescription}
-            disabled={saving}
-            className="px-4 py-2 rounded-md border"
-          >
-            {saving ? "保存中..." : "説明を保存"}
-          </button>
-        </div>
+        {isManager ? (
+          <>
+            <textarea
+              className="mt-2 w-full rounded-md border px-3 py-2"
+              value={descriptionDraft}
+              onChange={(e) => setDescriptionDraft(e.target.value)}
+              rows={6}
+            />
+            <button
+              className="mt-2 rounded-md border px-3 py-2"
+              onClick={updateDescription}
+            >
+              {saving ? "保存中..." : "説明を保存"}
+            </button>
+          </>
+        ) : (
+          <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">
+            {task?.description ?? "（未入力）"}
+          </p>
+        )}
       </div>
 
       {/* 担当者（編集） */}
@@ -306,31 +407,40 @@ export default function TaskDetailPage() {
           ※ MVPは profiles 全員を候補に表示（RLS後に“同じ支部/部署のみ”へ）
         </div>
 
-        <div className="space-y-2">
-          {profiles.map((p) => (
-            <label key={p.user_id} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={assigneeIds.includes(p.user_id)}
-                onChange={() => toggleAssignee(p.user_id)}
-              />
-              <span>
-                {p.email}
-                {p.display_name ? `（${p.display_name}）` : ""}
-              </span>
-            </label>
-          ))}
-        </div>
+        {isManager ? (
+          <>
+            <div className="mt-2 space-y-2">
+              {profiles.map((p) => (
+                <label key={p.user_id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={assigneeIds.includes(p.user_id)}
+                    onChange={() => toggleAssignee(p.user_id)}
+                  />
+                  {p.display_name ? `${p.display_name}（${p.email}）` : p.email}
+                </label>
+              ))}
+            </div>
 
-        <div className="mt-4 flex justify-end">
-          <button
-            onClick={saveAssignees}
-            disabled={saving}
-            className="px-4 py-2 rounded-md border"
-          >
-            {saving ? "保存中..." : "担当者を保存"}
-          </button>
-        </div>
+            <button className="mt-3 rounded-md border px-3 py-2" onClick={saveAssignees}>
+              {saving ? "保存中..." : "担当者を保存"}
+            </button>
+          </>
+        ) : (
+          <div className="mt-2 text-sm text-gray-700">
+            {assigneeIds.length === 0 ? (
+              <span>（未割当）</span>
+            ) : (
+              <ul className="list-disc pl-5">
+                {assigneeIds.map((uid) => {
+                  const p = profiles.find((x) => x.user_id === uid);
+                  const label = p ? (p.display_name ? `${p.display_name}（${p.email}）` : p.email) : uid;
+                  return <li key={uid}>{label}</li>;
+                })}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

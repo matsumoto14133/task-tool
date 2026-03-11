@@ -62,7 +62,7 @@ function roleLabel(role: "member" | "manager" | "admin") {
   }
 }
 
-export default function DashboardPage() {
+export default function DashboardPage() { // ページコンポーネント（部品化）→一部を他のファイルから呼び出せる
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
   const [rows, setRows] = useState<AssigneeRow[]>([]);
@@ -70,10 +70,14 @@ export default function DashboardPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [membership, setMembership] = useState<Membership | null>(null);
+  const [requestedTasks, setRequestedTasks] = useState<TaskRow[]>([]);
+  const [me, setMe] = useState<{ id: string; email: string | null } | null>(null);
 
   const tasks = useMemo(() => {
     return rows.flatMap((r) => normalizeTasks(r.tasks));
   }, [rows]);
+
+  const isManager = membership?.role === "manager" || membership?.role === "admin";
 
   useEffect(() => {
     (async () => {
@@ -91,7 +95,7 @@ export default function DashboardPage() {
         router.replace("/login");
         return;
       }
-      setEmail(userData.user.email ?? null);
+      setMe({ id: userData.user.id, email: userData.user.email ?? null });
 
       // ログイン後に自分のメンバーシップをとる
       const { data: membershipList, error: membershipErr } = await supabase
@@ -142,38 +146,79 @@ export default function DashboardPage() {
         return;
       }
 
+      // 自分が依頼したタスク
+      const { data: reqData, error: reqErr } = await supabase
+        .from("tasks")
+        .select("id,title,description,requester_id,scope_type,scope_id,due_at,status,created_at,updated_at")
+        .eq("requester_id", userData.user.id)
+        .order("due_at", { ascending: true });
+
+      if (reqErr) {
+        setErrorMsg(reqErr.message);
+        setLoading(false);
+        return;
+      }
+
+      setRequestedTasks((reqData ?? []) as TaskRow[]);
+
       setRows((data ?? []) as AssigneeRow[]);
       setLoading(false);
     })();
   }, [router]);
 
   const updateStatus = async (taskId: string, status: TaskStatus) => {
-  setErrorMsg(null);
+    setErrorMsg(null);
 
-  const { error } = await supabase
-    .from("tasks")
-    .update({ status })
-    .eq("id", taskId);
+    const { error } = await supabase
+      .from("tasks")
+      .update({ status })
+      .eq("id", taskId);
 
-  if (error) {
-    setErrorMsg(error.message);
-    return;
-  }
+    if (error) {
+      setErrorMsg(error.message);
+      return;
+    }
 
-  // 画面を即時反映（ローカルstate更新）
-  setRows((prev) =>
-    prev.map((r) => {
-      const list = normalizeTasks(r.tasks);
-      const updated = list.map((t) => (t.id === taskId ? { ...t, status } : t));
+    // 画面を即時反映（ローカルstate更新）
+    setRows((prev) =>
+      prev.map((r) => {
+        const list = normalizeTasks(r.tasks);
+        const updated = list.map((t) => (t.id === taskId ? { ...t, status } : t));
 
-      // 返却形式は「元の形を保つ」：単体なら単体、配列なら配列
-      const nextTasks =
-        r.tasks === null ? null : Array.isArray(r.tasks) ? updated : updated[0] ?? null;
+        // 返却形式は「元の形を保つ」：単体なら単体、配列なら配列
+        const nextTasks =
+          r.tasks === null ? null : Array.isArray(r.tasks) ? updated : updated[0] ?? null;
 
-      return { ...r, tasks: nextTasks };
-    })
-  );
-};
+        return { ...r, tasks: nextTasks };
+      })
+    );
+  };
+
+  const updateStatusFromDashboard = async (task: TaskRow, next: TaskStatus) => {
+    setErrorMsg(null);
+
+    const isManager = membership?.role === "manager" || membership?.role === "admin";
+    const canEdit = isManager || task.requester_id === me?.id;
+
+    if (!canEdit) {
+      setErrorMsg("このタスクのステータス変更権限がありません");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({ status: next })
+      .eq("id", task.id);
+
+    if (error) {
+      setErrorMsg(error.message);
+      return;
+    }
+
+    setRequestedTasks((prev) =>
+      prev.map((t) => (t.id === task.id ? { ...t, status: next } : t))
+    );
+  };
 
   const onLogout = async () => {
     await supabase.auth.signOut();
@@ -281,6 +326,43 @@ export default function DashboardPage() {
                 </li>
               );
             })}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-lg font-semibold">自分が依頼したタスク</h2>
+
+        {requestedTasks.length === 0 ? (
+          <p className="mt-3 text-sm text-gray-600">依頼したタスクがありません。</p>
+        ) : (
+          <ul className="mt-4 space-y-3">
+            {requestedTasks.map((t) => (
+              <li key={t.id} className="rounded-xl border p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <Link href={`/tasks/${t.id}`} className="text-lg font-semibold underline">
+                      {t.title}
+                    </Link>
+                    <div className="mt-2 text-sm text-gray-600">{formatDue(t.due_at)}</div>
+                  </div>
+
+                  <div className="text-right text-sm">
+                    <label className="block text-xs text-gray-500">進捗</label>
+                    <select
+                      className="mt-1 rounded-md border px-2 py-1"
+                      value={t.status}
+                      onChange={(e) => updateStatusFromDashboard(t, e.target.value as TaskStatus)}
+                    >
+                      <option value="todo">未着手</option>
+                      <option value="doing">進行中</option>
+                      <option value="hold">保留</option>
+                      <option value="done">完了</option>
+                    </select>
+                  </div>
+                </div>
+              </li>
+            ))}
           </ul>
         )}
       </section>

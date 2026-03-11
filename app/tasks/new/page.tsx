@@ -12,6 +12,19 @@ type Branch = { id: string; name: string };
 type Department = { id: string; name: string; branch_id: string | null };
 type Profile = { user_id: string; email: string | null; display_name: string | null };
 
+type Membership = {
+  branch_id: string;
+  department_id: string | null;
+  role: "member" | "manager" | "admin";
+  branches: { name: string }[]; // ←配列にする
+};
+
+type AssigneeCandidate = {
+  user_id: string;
+  email: string;
+  display_name: string | null;
+};
+
 export default function NewTaskPage() {
   const router = useRouter();
 
@@ -34,20 +47,21 @@ export default function NewTaskPage() {
   const [departmentId, setDepartmentId] = useState<string>("");
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
 
-  const scopeId = useMemo(() => {
-    if (!me) return "";
-    if (scopeType === "personal") return me.id;
-    if (scopeType === "department") return departmentId;
-    return branchId; // branch
-  }, [scopeType, branchId, departmentId, me]);
+  // メンバーシップ関連
+  const [membership, setMembership] = useState<Membership | null>(null);
+  const [candidates, setCandidates] = useState<AssigneeCandidate[]>([]);
+
+  const [assignAllBranch, setAssignAllBranch] = useState(false);
+  const [assignAllDept, setAssignAllDept] = useState(false); // 部署は後回しでもOK
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       setErrorMsg(null);
 
-      // login check
+      // 1) user
       const { data: userData, error: userErr } = await supabase.auth.getUser();
+
       if (userErr) {
         setErrorMsg(userErr.message);
         setLoading(false);
@@ -57,47 +71,82 @@ export default function NewTaskPage() {
         router.replace("/login");
         return;
       }
-      const myId = userData.user.id;
-      setMe({ id: myId, email: userData.user.email ?? null });
 
-      // fetch initial data
-      const [bRes, dRes, pRes] = await Promise.all([
-        supabase.from("branches").select("id,name").order("created_at", { ascending: true }),
-        supabase.from("departments").select("id,name,branch_id").order("created_at", { ascending: true }),
-        supabase.from("profiles").select("user_id,email,display_name").order("created_at", { ascending: true }),
-      ]);
+      setMe({ id: userData.user.id, email: userData.user.email ?? null });
 
-      if (bRes.error) return setErrorMsg(bRes.error.message), setLoading(false);
-      if (dRes.error) return setErrorMsg(dRes.error.message), setLoading(false);
-      if (pRes.error) return setErrorMsg(pRes.error.message), setLoading(false);
+      // 2) membership（支部名も取る）
+      const { data: ms, error: msErr } = await supabase
+        .from("memberships")
+        .select(`
+          branch_id,
+          department_id,
+          role,
+          branches ( name )
+        `)
+        .eq("user_id", userData.user.id)
+        .order("created_at", { ascending: true })
+        .limit(1);
 
-      const b = (bRes.data ?? []) as Branch[];
-      const d = (dRes.data ?? []) as Department[];
-      const p = (pRes.data ?? []) as Profile[];
+      if (msErr) {
+        setErrorMsg(msErr.message);
+        setLoading(false);
+        return;
+      }
 
-      setBranches(b);
-      setDepartments(d);
-      setProfiles(p);
+      const myMembership = (ms?.[0] ?? null) as Membership | null;
+      if (!myMembership) {
+        setErrorMsg("memberships が未登録です（管理者に登録してもらってください）");
+        setLoading(false);
+        return;
+      }
+      setMembership(myMembership);
 
-      // 1支部スタート想定：最初の支部をデフォルト選択
-      const defaultBranchId = b[0]?.id ?? "";
-      setBranchId(defaultBranchId);
+      // 3) candidates（同じ支部の人だけ）
+      const { data: memList, error: memErr } = await supabase
+        .from("memberships")
+        .select(`
+          profiles ( user_id, email, display_name )
+        `)
+        .eq("branch_id", myMembership.branch_id);
 
-      // 部署も支部に紐づく最初のものを選択
-      const firstDept = d.find((x) => x.branch_id === defaultBranchId) ?? d[0];
-      setDepartmentId(firstDept?.id ?? "");
+      if (memErr) {
+        setErrorMsg(memErr.message);
+        setLoading(false);
+        return;
+      }
 
-      // 担当者はデフォルトで自分
-      setAssigneeIds([myId]);
+      const list =
+        (memList ?? [])
+          .map((r: any) => r.profiles)
+          .filter(Boolean) as AssigneeCandidate[];
+
+      const uniq = Array.from(new Map(list.map((p) => [p.user_id, p])).values());
+
+      console.log("membership:", myMembership);
+      console.log("memList sample:", memList?.[0]);
+      console.log("uniq candidates:", uniq);
+
+      setCandidates(uniq);
 
       setLoading(false);
     })();
   }, [router]);
 
-  const toggleAssignee = (userId: string) => {
+  const toggleAssignee = (targetUserId: string) => {
     setAssigneeIds((prev) =>
-      prev.includes(userId) ? prev.filter((x) => x !== userId) : [...prev, userId]
+      prev.includes(targetUserId)
+        ? prev.filter((x) => x !== targetUserId)
+        : [...prev, targetUserId]
     );
+  };
+
+  const onToggleAllBranch = (checked: boolean) => {
+    setAssignAllBranch(checked);
+    if (checked) {
+      setAssigneeIds(candidates.map((c) => c.user_id));
+    } else {
+      setAssigneeIds([]); // MVPは単純に空に戻す（必要なら「元の選択に戻す」も可能）
+    }
   };
 
   const onCreate = async (e: React.FormEvent) => {
@@ -112,8 +161,21 @@ export default function NewTaskPage() {
       setSaving(false);
       return;
     }
-    if (!scopeId) {
-      setErrorMsg("管轄の選択が不正です（scope_idが空）。");
+    // submit時に必要な情報が揃っているかチェック
+    if (!me || !membership) {
+      setErrorMsg("ユーザー情報または所属情報が未取得です");
+      setSaving(false);
+      return;
+    }
+
+    const scope_id =
+      scopeType === "branch"
+        ? membership.branch_id
+        : scopeType === "personal"
+        ? me.id
+        : null;
+    if (!scope_id) {
+      setErrorMsg("scope_id を決定できませんでした");
       setSaving(false);
       return;
     }
@@ -122,9 +184,21 @@ export default function NewTaskPage() {
       setSaving(false);
       return;
     }
+    // 期限は必須にする
+    if (!dueAt) {
+      setErrorMsg("期限を入力してください。");
+      setSaving(false);
+      return;
+    }
 
     // datetime-local -> ISO
     const dueAtIso = dueAt ? new Date(dueAt).toISOString() : null;
+
+    if (!dueAtIso) {
+      setErrorMsg("期限の形式が不正です。");
+      setSaving(false);
+      return;
+    }
 
     // 1) tasks insert
     const { data: task, error: taskErr } = await supabase
@@ -134,7 +208,7 @@ export default function NewTaskPage() {
         description: description.trim() ? description.trim() : null,
         requester_id: me.id,
         scope_type: scopeType,
-        scope_id: scopeId,
+        scope_id: scope_id,
         due_at: dueAtIso,
         status: "todo" as TaskStatus,
       })
@@ -167,6 +241,13 @@ export default function NewTaskPage() {
     if (!branchId) return departments;
     return departments.filter((d) => d.branch_id === branchId);
   }, [departments, branchId]);
+
+  const branchName =
+  !membership
+    ? "-"
+    : Array.isArray((membership as any).branches)
+    ? ((membership as any).branches?.[0]?.name ?? "-")
+    : ((membership as any).branches?.name ?? "-");
 
   return (
     <main className="p-6">
@@ -208,123 +289,98 @@ export default function NewTaskPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium">期限</label>
+            <label className="block text-sm font-medium">期限（必須）</label>
             <input
-              className="mt-1 rounded-md border px-3 py-2"
               type="datetime-local"
+              className="mt-1 w-full rounded-md border px-3 py-2"
               value={dueAt}
               onChange={(e) => setDueAt(e.target.value)}
+              required
             />
           </div>
 
-          <div className="rounded-xl border p-4 space-y-3">
-            <p className="font-semibold">管轄</p>
+          <div className="rounded-xl border p-4">
+            <div className="font-semibold mb-2">管轄</div>
 
-            <div className="flex flex-wrap gap-3">
-              <label className="flex items-center gap-2 text-sm">
+            <div className="flex items-center gap-6 text-sm">
+              <label className="flex items-center gap-2">
                 <input
                   type="radio"
                   name="scope"
+                  value="branch"
                   checked={scopeType === "branch"}
                   onChange={() => setScopeType("branch")}
                 />
                 支部
               </label>
 
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2">
                 <input
                   type="radio"
                   name="scope"
-                  checked={scopeType === "department"}
-                  onChange={() => setScopeType("department")}
-                />
-                部署
-              </label>
-
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="scope"
+                  value="personal"
                   checked={scopeType === "personal"}
                   onChange={() => setScopeType("personal")}
                 />
                 個人
               </label>
+
+              <label className="flex items-center gap-2 text-gray-400">
+                <input type="radio" name="scope" value="department" disabled />
+                部署（準備中）
+              </label>
             </div>
 
-            {(scopeType === "branch" || scopeType === "department") && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium">支部</label>
-                  <select
-                    className="mt-1 w-full rounded-md border px-3 py-2"
-                    value={branchId}
-                    onChange={(e) => {
-                      setBranchId(e.target.value);
-                      // 支部変更時、部署選択も合わせて更新
-                      const nextDept = departments.find((d) => d.branch_id === e.target.value);
-                      setDepartmentId(nextDept?.id ?? "");
-                    }}
-                  >
-                    {branches.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {scopeType === "department" && (
-                  <div>
-                    <label className="block text-sm font-medium">部署</label>
-                    <select
-                      className="mt-1 w-full rounded-md border px-3 py-2"
-                      value={departmentId}
-                      onChange={(e) => setDepartmentId(e.target.value)}
-                    >
-                      {deptOptions.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {scopeType === "personal" && (
-              <p className="text-sm text-gray-600">
-                個人タスクとして作成します（scope_id = あなたのユーザーID）
-              </p>
-            )}
+            <div className="mt-3 text-sm text-gray-700">
+              {scopeType === "branch" && (
+                <>支部: {branchName} </>
+              )}
+              {scopeType === "personal" && <>個人: あなた</>}
+            </div>
           </div>
 
           <div className="rounded-xl border p-4">
-            <p className="font-semibold">担当者（複数選択可）</p>
-            <p className="text-xs text-gray-600 mt-1">
-              ※ profiles から取得しています。まずは全員閲覧できる前提（RLS後で）。
-            </p>
+            <div className="font-semibold mb-2">担当者（複数選択可）</div>
 
-            <div className="mt-3 space-y-2">
-              {profiles.map((p) => {
-                const label = p.display_name || p.email || p.user_id;
-                const checked = assigneeIds.includes(p.user_id);
-                return (
-                  <label key={p.user_id} className="flex items-center gap-2 text-sm">
+            <div className="mb-3 flex flex-col gap-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={assignAllBranch}
+                  onChange={(e) => onToggleAllBranch(e.target.checked)}
+                  disabled={candidates.length === 0}
+                />
+                支部全員に割り当て
+              </label>
+
+              <label className="flex items-center gap-2 text-sm text-gray-400">
+                <input type="checkbox" disabled />
+                部署全員に割り当て（準備中）
+              </label>
+            </div>
+
+            {candidates.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                担当者候補がありません（memberships / profiles を確認してください）
+              </p>
+            ) : (
+              <div className="space-y-2 text-sm">
+                {candidates.map((p) => (
+                  <label key={p.user_id} className="flex items-center gap-2">
                     <input
                       type="checkbox"
-                      checked={checked}
+                      disabled={assignAllBranch}
+                      checked={assigneeIds.includes(p.user_id)}
                       onChange={() => toggleAssignee(p.user_id)}
                     />
-                    <span>{label}</span>
-                    {p.user_id === me?.id && (
-                      <span className="text-xs text-gray-500">(あなた)</span>
-                    )}
+                    <span>
+                      {p.email}
+                      {p.display_name ? `（${p.display_name}）` : ""}
+                    </span>
                   </label>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <button
