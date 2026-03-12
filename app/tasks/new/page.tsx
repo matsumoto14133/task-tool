@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
@@ -25,6 +25,11 @@ type AssigneeCandidate = {
   display_name: string | null;
 };
 
+function candidateLabel(candidate: AssigneeCandidate) {
+  if (candidate.display_name?.trim()) return candidate.display_name;
+  return candidate.email;
+}
+
 export default function NewTaskPage() {
   const router = useRouter();
 
@@ -34,17 +39,12 @@ export default function NewTaskPage() {
 
   const [me, setMe] = useState<{ id: string; email: string | null } | null>(null);
 
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-
   // form state
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [attachmentUrl, setAttachmentUrl] = useState("");
   const [dueAt, setDueAt] = useState(""); // datetime-local
   const [scopeType, setScopeType] = useState<ScopeType>("branch");
-  const [branchId, setBranchId] = useState<string>("");
-  const [departmentId, setDepartmentId] = useState<string>("");
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
 
   // メンバーシップ関連
@@ -132,13 +132,21 @@ export default function NewTaskPage() {
     })();
   }, [router]);
 
-  const toggleAssignee = (targetUserId: string) => {
-    setAssigneeIds((prev) =>
-      prev.includes(targetUserId)
-        ? prev.filter((x) => x !== targetUserId)
-        : [...prev, targetUserId]
-    );
-  };
+  function toggleAssignee(userId: string) {
+    setAssigneeIds((prev) => {
+      const next = prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId];
+
+      const allSelected =
+        candidates.length > 0 &&
+        candidates.every((c) => next.includes(c.user_id));
+
+      setAssignAllBranch(allSelected);
+
+      return next;
+    });
+  }
 
   const onToggleAllBranch = (checked: boolean) => {
     setAssignAllBranch(checked);
@@ -211,6 +219,7 @@ export default function NewTaskPage() {
         scope_id: scope_id,
         due_at: dueAtIso,
         status: "todo" as TaskStatus,
+        attachment_url: attachmentUrl.trim() ? attachmentUrl.trim() : null,
       })
       .select("id")
       .single();
@@ -222,7 +231,13 @@ export default function NewTaskPage() {
     }
 
     // 2) assignees insert (bulk)
-    const rows = assigneeIds.map((uid) => ({ task_id: task.id, user_id: uid }));
+    const rows = assigneeIds.map((uid) => ({
+      task_id: task.id,
+      user_id: uid,
+      status: "todo" as TaskStatus,
+      note: null,
+    }));
+
     const { error: aErr } = await supabase.from("task_assignees").insert(rows);
 
     if (aErr) {
@@ -236,11 +251,6 @@ export default function NewTaskPage() {
     // 作成後はdashboardへ
     router.replace("/dashboard");
   };
-
-  const deptOptions = useMemo(() => {
-    if (!branchId) return departments;
-    return departments.filter((d) => d.branch_id === branchId);
-  }, [departments, branchId]);
 
   const branchName =
   !membership
@@ -285,6 +295,20 @@ export default function NewTaskPage() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium">資料URL</label>
+            <p className="mt-1 text-xs text-gray-500">
+              Google DriveのURLを貼ってください。複数資料共有時は1つのドライブにまとめてください。
+            </p>
+            <input
+              type="url"
+              className="mt-1 w-full rounded-md border px-3 py-2"
+              value={attachmentUrl}
+              onChange={(e) => setAttachmentUrl(e.target.value)}
+              placeholder="https://drive.google.com/..."
             />
           </div>
 
@@ -369,14 +393,10 @@ export default function NewTaskPage() {
                   <label key={p.user_id} className="flex items-center gap-2">
                     <input
                       type="checkbox"
-                      disabled={assignAllBranch}
                       checked={assigneeIds.includes(p.user_id)}
                       onChange={() => toggleAssignee(p.user_id)}
                     />
-                    <span>
-                      {p.email}
-                      {p.display_name ? `（${p.display_name}）` : ""}
-                    </span>
+                    <span>{candidateLabel(p)}</span>
                   </label>
                 ))}
               </div>

@@ -25,6 +25,7 @@ type Task = {
   scope_id: string | null;
   due_at: string | null;
   status: TaskStatus;
+  attachment_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -34,6 +35,34 @@ type Profile = {
   email: string;
   display_name: string | null;
 };
+
+type AssigneeProgress = {
+  user_id: string;
+  status: TaskStatus;
+  note: string | null;
+  planned_at: string | null;
+  updated_at: string;
+};
+
+// 更新日時表示用関数
+function formatDateTime(value: string | null) {
+  if (!value) return "未更新";
+  const d = new Date(value);
+  return d.toLocaleString("ja-JP");
+}
+
+function scopeTypeLabel(scopeType: ScopeType) {
+  switch (scopeType) {
+    case "branch":
+      return "支部";
+    case "department":
+      return "部署";
+    case "personal":
+      return "個人";
+    default:
+      return scopeType;
+  }
+}
 
 function statusLabel(status: TaskStatus) {
   switch (status) {
@@ -48,6 +77,12 @@ function statusLabel(status: TaskStatus) {
     default:
       return status;
   }
+}
+
+function profileLabel(profile: Profile | undefined, fallbackUserId?: string) {
+  if (!profile) return fallbackUserId ?? "不明なユーザー";
+  if (profile.display_name?.trim()) return profile.display_name;
+  return profile.email;
 }
 
 function dueTone(dueAt: string | null) {
@@ -73,20 +108,25 @@ export default function TaskDetailPage() {
   const taskId = params.id;
 
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
 
   const [task, setTask] = useState<Task | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
-
-  // 編集用（description）
-  const [descriptionDraft, setDescriptionDraft] = useState<string>("");
-
+  const [assigneeProgressMap, setAssigneeProgressMap] = useState<
+    Record<string, AssigneeProgress>
+  >({});
+  const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hideDoneAssignees, setHideDoneAssignees] = useState(false);
 
   const [me, setMe] = useState<{ id: string; email: string | null } | null>(null);
   const [membership, setMembership] = useState<Membership | null>(null);
-  const isManager = membership?.role === "manager" || membership?.role === "admin";
+  const isManagerOrAdmin = 
+    membership?.role === "manager" || membership?.role === "admin";
+  const isMyTask = me ? assigneeIds.includes(me.id) : false;
+  const canAccessEditPage = isManagerOrAdmin;
+  const isAssignee = me ? assigneeIds.includes(me.id) : false;
+  const canEditOwnProgress = isAssignee;
 
   useEffect(() => {
     if (!taskId || !isUuid(taskId)) {
@@ -170,18 +210,24 @@ export default function TaskDetailPage() {
       if (taskErr) throw taskErr;
 
       setTask(taskData as Task);
-      setDescriptionDraft((taskData as Task).description ?? "");
 
       // 2) assignees
       const { data: assigneesData, error: assigneesErr } = await supabase
         .from("task_assignees")
-        .select("user_id")
+        .select("user_id, status, note, planned_at, updated_at")
         .eq("task_id", taskId);
 
       if (assigneesErr) throw assigneesErr;
 
-      const ids = (assigneesData ?? []).map((r: { user_id: string }) => r.user_id);
+      const rows = (assigneesData ?? []) as AssigneeProgress[];
+      const ids = rows.map((r) => r.user_id);
       setAssigneeIds(ids);
+
+      const nextMap: Record<string, AssigneeProgress> = {};
+      for (const row of rows) {
+        nextMap[row.user_id] = row;
+      }
+      setAssigneeProgressMap(nextMap);
 
       // 3) profiles（候補）
       const { data: profilesData, error: profilesErr } = await supabase
@@ -197,96 +243,6 @@ export default function TaskDetailPage() {
       setError(e?.message ?? "読み込みに失敗しました");
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function updateDescription() {    
-    if (!task) return;
-    setSaving(true);
-    setError(null);
-
-    if (!isManager) {
-      setError("説明の編集は manager / admin のみです");
-      return;
-    }
-
-    try {
-      const { error: updErr } = await supabase
-        .from("tasks")
-        .update({ description: descriptionDraft })
-        .eq("id", task.id);
-
-      if (updErr) throw updErr;
-
-      // ローカル反映
-      setTask({ ...task, description: descriptionDraft });
-    } catch (e: any) {
-      setError(e?.message ?? "保存に失敗しました");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function updateStatus(taskId: string, status: TaskStatus) {
-    if (!task) return;
-    setSaving(true);
-    setError(null);
-
-    try {
-      const { error: updErr } = await supabase
-        .from("tasks")
-        .update({ status: status })
-        .eq("id", task.id);
-
-      if (updErr) throw updErr;
-      setTask({ ...task, status: status });
-    } catch (e: any) {
-      setError(e?.message ?? "ステータス更新に失敗しました");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function toggleAssignee(userId: string) {
-    setAssigneeIds((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
-    );
-  }
-
-  async function saveAssignees() {
-    if (!task) return;
-
-    if (assigneeIds.length === 0) {
-      setError("担当者は1人以上必要です");
-      return;
-    }
-
-    setSaving(true);
-    setError(null);
-
-    try {
-      // 置換（全削除→再insert）: 最初はこれが一番安全
-      const { error: delErr } = await supabase
-        .from("task_assignees")
-        .delete()
-        .eq("task_id", task.id);
-
-      if (delErr) throw delErr;
-
-      const rows = assigneeIds.map((user_id) => ({
-        task_id: task.id,
-        user_id,
-      }));
-
-      const { error: insErr } = await supabase
-        .from("task_assignees")
-        .insert(rows);
-
-      if (insErr) throw insErr;
-    } catch (e: any) {
-      setError(e?.message ?? "担当者保存に失敗しました");
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -309,8 +265,133 @@ export default function TaskDetailPage() {
     );
   }
 
+  async function updateMyStatus(status: TaskStatus) {
+    if (!task || !me) return;
+
+    setSavingUserId(me.id);
+    setError(null);
+
+    try {
+      const { error: updErr } = await supabase
+        .from("task_assignees")
+        .update({
+          status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("task_id", task.id)
+        .eq("user_id", me.id);
+
+      if (updErr) throw updErr;
+
+      setAssigneeProgressMap((prev) => ({
+        ...prev,
+        [me.id]: {
+          ...(prev[me.id] ?? {
+            user_id: me.id,
+            note: "",
+            updated_at: new Date().toISOString(),
+          }),
+          status,
+          updated_at: new Date().toISOString(),
+        },
+      }));
+    } catch (e: any) {
+      setError(e?.message ?? "進捗更新に失敗しました");
+    } finally {
+      setSavingUserId(null);
+    }
+  }
+
+  async function updateMyNote(note: string) {
+    if (!task || !me) return;
+
+    setSavingUserId(me.id);
+    setError(null);
+
+    try {
+      const nextNote = note.trim() ? note : null;
+
+      const { error: updErr } = await supabase
+        .from("task_assignees")
+        .update({
+          note: nextNote,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("task_id", task.id)
+        .eq("user_id", me.id);
+
+      if (updErr) throw updErr;
+
+      setAssigneeProgressMap((prev) => ({
+        ...prev,
+        [me.id]: {
+          ...(prev[me.id] ?? {
+            user_id: me.id,
+            status: "todo",
+            updated_at: new Date().toISOString(),
+          }),
+          note: nextNote,
+          updated_at: new Date().toISOString(),
+        },
+      }));
+    } catch (e: any) {
+      setError(e?.message ?? "備考更新に失敗しました");
+    } finally {
+      setSavingUserId(null);
+    }
+  }
+
+  async function updateMyPlannedAt(plannedAt: string) {
+    if (!task || !me) return;
+
+    setSavingUserId(me.id);
+    setError(null);
+
+    try {
+      const nextPlannedAt = plannedAt ? new Date(plannedAt).toISOString() : null;
+
+      const { error: updErr } = await supabase
+        .from("task_assignees")
+        .update({
+          planned_at: nextPlannedAt,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("task_id", task.id)
+        .eq("user_id", me.id);
+
+      if (updErr) throw updErr;
+
+      setAssigneeProgressMap((prev) => ({
+        ...prev,
+        [me.id]: {
+          ...(prev[me.id] ?? {
+            user_id: me.id,
+            status: "todo",
+            note: "",
+            updated_at: new Date().toISOString(),
+          }),
+          planned_at: nextPlannedAt,
+          updated_at: new Date().toISOString(),
+        },
+      }));
+    } catch (e: any) {
+      setError(e?.message ?? "実施予定日時の更新に失敗しました");
+    } finally {
+      setSavingUserId(null);
+    }
+  }
+
   const dueClass = dueTone(task.due_at);
   const due = getDueMeta(task.due_at);
+  const visibleAssigneeIds = hideDoneAssignees
+    ? assigneeIds.filter((uid) => assigneeProgressMap[uid]?.status !== "done")
+    : assigneeIds;
+
+  const sortedAssignees = [...visibleAssigneeIds].sort((a, b) => {
+    if (a === me?.id) return -1;
+    if (b === me?.id) return 1;
+    return 0;
+  });
 
   return (
     <div className="p-6 max-w-3xl">
@@ -320,12 +401,22 @@ export default function TaskDetailPage() {
           <div className="text-sm text-gray-500">task_id: {task.id}</div>
         </div>
         <div className="flex gap-2">
+          {canAccessEditPage && (
+            <Link
+              href={`/tasks/${task.id}/edit`}
+              className="px-4 py-2 border rounded-md"
+            >
+              タスクを編集する
+            </Link>
+          )}
+
           <button
             onClick={() => router.back()}
             className="px-4 py-2 border rounded-md"
           >
             戻る
           </button>
+
           <Link href="/dashboard" className="px-4 py-2 border rounded-md">
             ホーム
           </Link>
@@ -339,6 +430,11 @@ export default function TaskDetailPage() {
       )}
 
       {/* 基本情報 */}
+      {canEditOwnProgress && (
+        <div className="mb-4 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+          あなたはこのタスクの担当者です。このページから進捗更新が可能です。
+        </div>
+      )}
       <div className="border rounded-lg p-4 mb-4">
         <div className="text-xl font-semibold mb-1">{task.title}</div>
 
@@ -348,97 +444,174 @@ export default function TaskDetailPage() {
           </div>
 
           <div className="px-2 py-1 rounded border border-gray-200 bg-gray-50 text-gray-700">
-            scope: {task.scope_type}
-            {task.scope_id ? ` (${task.scope_id})` : ""}
+            管轄: {scopeTypeLabel(task.scope_type)}
+            {task.scope_id ? `（${task.scope_id}）` : ""}
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-gray-500">進捗</span>
-            {isManager ? (
-              <select
-                value={task.status}
-                onChange={(e) =>
-                  updateStatus(task.id, e.target.value as TaskStatus)
-                }
-              >
-                <option value="todo">未着手</option>
-                <option value="doing">進行中</option>
-                <option value="hold">保留</option>
-                <option value="done">完了</option>
-              </select>
-            ) : (
-              <div className="text-sm text-gray-700">
-                {statusLabel(task.status)}
-              </div>
-            )}
+            <span className="text-gray-500">全体進捗</span>
+            <div className="text-sm text-gray-700">
+              {statusLabel(task.status)}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 説明（編集） */}
+      {/* 説明 */}
       <div className="border rounded-lg p-4 mb-4">
         <div className="font-semibold mb-2">説明</div>
-        {isManager ? (
-          <>
-            <textarea
-              className="mt-2 w-full rounded-md border px-3 py-2"
-              value={descriptionDraft}
-              onChange={(e) => setDescriptionDraft(e.target.value)}
-              rows={6}
-            />
-            <button
-              className="mt-2 rounded-md border px-3 py-2"
-              onClick={updateDescription}
-            >
-              {saving ? "保存中..." : "説明を保存"}
-            </button>
-          </>
+        <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">
+          {task.description?.trim() ? task.description : "（未入力）"}
+        </p>
+      </div>
+
+      {/* 資料 */}
+      <div className="border rounded-lg p-4 mb-4">
+        <div className="font-semibold mb-2">資料</div>
+
+        {task.attachment_url ? (
+          <a
+            href={task.attachment_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-blue-600 underline break-all"
+          >
+            {task.attachment_url}
+          </a>
         ) : (
-          <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">
-            {task?.description ?? "（未入力）"}
-          </p>
+          <p className="text-sm text-gray-500">（未添付）</p>
         )}
       </div>
 
-      {/* 担当者（編集） */}
+      {/* 担当者ごとの進捗 */}
       <div className="border rounded-lg p-4">
-        <div className="font-semibold mb-2">担当者</div>
-        <div className="text-xs text-gray-500 mb-3">
-          ※ MVPは profiles 全員を候補に表示（RLS後に“同じ支部/部署のみ”へ）
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <div className="font-semibold">担当者ごとの進捗</div>
+
+          <label className="flex items-center gap-2 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={hideDoneAssignees}
+              onChange={(e) => setHideDoneAssignees(e.target.checked)}
+            />
+            完了を非表示
+          </label>
         </div>
 
-        {isManager ? (
-          <>
-            <div className="mt-2 space-y-2">
-              {profiles.map((p) => (
-                <label key={p.user_id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={assigneeIds.includes(p.user_id)}
-                    onChange={() => toggleAssignee(p.user_id)}
-                  />
-                  {p.display_name ? `${p.display_name}（${p.email}）` : p.email}
-                </label>
-              ))}
-            </div>
-
-            <button className="mt-3 rounded-md border px-3 py-2" onClick={saveAssignees}>
-              {saving ? "保存中..." : "担当者を保存"}
-            </button>
-          </>
+        {assigneeIds.length === 0 ? (
+          <div className="text-sm text-gray-500">（未割当）</div>
         ) : (
-          <div className="mt-2 text-sm text-gray-700">
-            {assigneeIds.length === 0 ? (
-              <span>（未割当）</span>
-            ) : (
-              <ul className="list-disc pl-5">
-                {assigneeIds.map((uid) => {
-                  const p = profiles.find((x) => x.user_id === uid);
-                  const label = p ? (p.display_name ? `${p.display_name}（${p.email}）` : p.email) : uid;
-                  return <li key={uid}>{label}</li>;
-                })}
-              </ul>
-            )}
+          <div className="space-y-4">
+            {sortedAssignees.map((uid) => {
+              const p = profiles.find((x) => x.user_id === uid);
+              const label = profileLabel(p, uid);
+              const progress = assigneeProgressMap[uid];
+              const isMe = me?.id === uid;
+
+              return (
+                <div
+                  key={uid}
+                  className={`rounded-lg border p-3 ${
+                    isMe
+                      ? "border-2 border-green-400"
+                      : "border-gray-200"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="font-medium flex items-center gap-2">
+                      {label}
+                      {isMe && (
+                        <span className="text-xs px-2 py-0.5 rounded bg-green-600 text-white">
+                          あなた
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      最終更新: {formatDateTime(progress?.updated_at ?? null)}
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <div className="text-xs text-gray-500 mb-1">進捗</div>
+
+                    {isMe && canEditOwnProgress ? (
+                      <select
+                        className="rounded-md border px-3 py-2 text-sm"
+                        value={progress?.status ?? "todo"}
+                        onChange={(e) => updateMyStatus(e.target.value as TaskStatus)}
+                        disabled={savingUserId === uid}
+                      >
+                        <option value="todo">未着手</option>
+                        <option value="doing">進行中</option>
+                        <option value="hold">保留</option>
+                        <option value="done">完了</option>
+                      </select>
+                    ) : (
+                      <div className="text-sm text-gray-700">
+                        {statusLabel(progress?.status ?? "todo")}
+                      </div>
+                    )}
+                  </div>
+
+                  {isMe && canEditOwnProgress && (
+                    <div className="mb-3">
+                      <div className="text-xs text-gray-500 mb-1">実施予定日時（この項目はあなたにだけ表示されます）</div>
+                      <div className="space-y-2">
+                        <input
+                          type="datetime-local"
+                          className="rounded-md border px-3 py-2 text-sm"
+                          value={
+                            progress?.planned_at
+                              ? new Date(progress.planned_at).toISOString().slice(0, 16)
+                              : ""
+                          }
+                          onChange={(e) => updateMyPlannedAt(e.target.value)}
+                          disabled={savingUserId === uid}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">備考</div>
+
+                    {isMe && canEditOwnProgress ? (
+                      <div className="space-y-2">
+                        <textarea
+                          className="w-full rounded-md border px-3 py-2 text-sm"
+                          rows={3}
+                          value={progress?.note ?? ""}
+                          onChange={(e) =>
+                            setAssigneeProgressMap((prev) => ({
+                              ...prev,
+                              [uid]: {
+                                ...(prev[uid] ?? {
+                                  user_id: uid,
+                                  status: "todo",
+                                  updated_at: new Date().toISOString(),
+                                }),
+                                note: e.target.value,
+                              },
+                            }))
+                          }
+                        />
+                        <button
+                          className="rounded-md border px-3 py-2 text-sm"
+                          onClick={() => updateMyNote(progress?.note ?? "")}
+                          disabled={savingUserId === uid}
+                        >
+                          {savingUserId === uid ? "保存中..." : "備考を保存"}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-700 whitespace-pre-wrap">
+                        {progress?.note?.trim() ? progress.note : "（未入力）"}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
