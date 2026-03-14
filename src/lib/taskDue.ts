@@ -1,11 +1,24 @@
-export type DueTone = "neutral" | "ok" | "warning" | "danger";
+export type DueTone = "neutral" | "ok" | "warning" | "danger" | "completed";
 
-export function getDueMeta(dueAt: string | null | undefined) {
+export function getDueMeta(
+  dueAt: string | null | undefined,
+  options?: { isCompleted?: boolean }
+) {
+  if (options?.isCompleted) {
+    return {
+      label: "完了済み",
+      tone: "completed" as DueTone,
+      diffHours: null as number | null,
+      remainingLabel: null as string | null,
+    };
+  }
+
   if (!dueAt) {
     return {
       label: "期限なし",
       tone: "neutral" as DueTone,
       diffHours: null as number | null,
+      remainingLabel: null as string | null,
     };
   }
 
@@ -14,16 +27,37 @@ export function getDueMeta(dueAt: string | null | undefined) {
   const diffHours = (dueMs - nowMs) / (1000 * 60 * 60);
 
   if (diffHours < 0) {
-    return { label: "期限切れ", tone: "danger" as DueTone, diffHours };
+    return {
+      label: "期限切れ",
+      tone: "danger" as DueTone,
+      diffHours,
+      remainingLabel: null as string | null,
+    };
   }
+
   if (diffHours <= 48) {
-    return { label: "期限間近", tone: "warning" as DueTone, diffHours };
+    const remainingHours = Math.max(1, Math.ceil(diffHours));
+
+    return {
+      label: "期限間近",
+      tone: "warning" as DueTone,
+      diffHours,
+      remainingLabel: `残り${remainingHours}時間`,
+    };
   }
-  return { label: "期限内", tone: "ok" as DueTone, diffHours };
+
+  return {
+    label: "期限内",
+    tone: "ok" as DueTone,
+    diffHours,
+    remainingLabel: null as string | null,
+  };
 }
 
 export function dueBadgeClass(tone: DueTone) {
   switch (tone) {
+    case "completed":
+      return "border-gray-800 bg-gray-100 text-gray-800";
     case "danger":
       return "border-red-300 bg-red-50 text-red-700";
     case "warning":
@@ -37,6 +71,8 @@ export function dueBadgeClass(tone: DueTone) {
 
 export function dueCardBorderClass(tone: DueTone) {
   switch (tone) {
+    case "completed":
+      return "border-gray-800 bg-gray-50";
     case "danger":
       return "border-red-300";
     case "warning":

@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 
 type ScopeType = "branch" | "department" | "personal";
@@ -17,6 +16,12 @@ type Membership = {
   department_id: string | null;
   role: "member" | "manager" | "admin";
   branches: { name: string }[]; // ←配列にする
+};
+
+type MembershipDepartment = {
+  user_id: string;
+  branch_id: string;
+  department_id: string;
 };
 
 type AssigneeCandidate = {
@@ -46,13 +51,31 @@ export default function NewTaskPage() {
   const [dueAt, setDueAt] = useState(""); // datetime-local
   const [scopeType, setScopeType] = useState<ScopeType>("branch");
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
 
   // メンバーシップ関連
   const [membership, setMembership] = useState<Membership | null>(null);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [membershipDepartments, setMembershipDepartments] = useState<MembershipDepartment[]>([]);
   const [candidates, setCandidates] = useState<AssigneeCandidate[]>([]);
 
   const [assignAllBranch, setAssignAllBranch] = useState(false);
-  const [assignAllDept, setAssignAllDept] = useState(false); // 部署は後回しでもOK
+  const [assignAllDept, setAssignAllDept] = useState(false); 
+
+  const selectedDepartmentMemberIds = useMemo(() => {
+    if (scopeType !== "department" || !selectedDepartmentId) return [];
+
+    return membershipDepartments
+      .filter((item) => item.department_id === selectedDepartmentId)
+      .map((item) => item.user_id);
+  }, [scopeType, selectedDepartmentId, membershipDepartments]);
+
+  const branchName =
+  !membership
+    ? "-"
+    : Array.isArray((membership as any).branches)
+    ? ((membership as any).branches?.[0]?.name ?? "-")
+    : ((membership as any).branches?.name ?? "-");
 
   useEffect(() => {
     (async () => {
@@ -101,6 +124,35 @@ export default function NewTaskPage() {
       }
       setMembership(myMembership);
 
+      // 2.5) departments（同じ支部の部署一覧）
+      const { data: deptList, error: deptErr } = await supabase
+        .from("departments")
+        .select("id, name, branch_id")
+        .eq("branch_id", myMembership.branch_id)
+        .order("created_at", { ascending: true });
+
+      if (deptErr) {
+        setErrorMsg(deptErr.message);
+        setLoading(false);
+        return;
+      }
+
+      setDepartments((deptList ?? []) as Department[]);
+
+      // 2.6) membership_departments（支部内の部署所属）
+      const { data: mdList, error: mdErr } = await supabase
+        .from("membership_departments")
+        .select("user_id, branch_id, department_id")
+        .eq("branch_id", myMembership.branch_id);
+
+      if (mdErr) {
+        setErrorMsg(mdErr.message);
+        setLoading(false);
+        return;
+      }
+
+      setMembershipDepartments((mdList ?? []) as MembershipDepartment[]);
+
       // 3) candidates（同じ支部の人だけ）
       const { data: memList, error: memErr } = await supabase
         .from("memberships")
@@ -132,17 +184,41 @@ export default function NewTaskPage() {
     })();
   }, [router]);
 
+  useEffect(() => {
+    if (scopeType !== "department") {
+      setSelectedDepartmentId("");
+    }
+  }, [scopeType]);
+
+  useEffect(() => {
+    if (scopeType !== "department" || !selectedDepartmentId) {
+      setAssignAllDept(false);
+      return;
+    }
+
+    const allDepartmentSelected =
+      selectedDepartmentMemberIds.length > 0 &&
+      selectedDepartmentMemberIds.every((id) => assigneeIds.includes(id));
+
+    setAssignAllDept(allDepartmentSelected);
+  }, [scopeType, selectedDepartmentId, selectedDepartmentMemberIds, assigneeIds]);
+
   function toggleAssignee(userId: string) {
     setAssigneeIds((prev) => {
       const next = prev.includes(userId)
         ? prev.filter((id) => id !== userId)
         : [...prev, userId];
 
-      const allSelected =
+      const allBranchSelected =
         candidates.length > 0 &&
         candidates.every((c) => next.includes(c.user_id));
 
-      setAssignAllBranch(allSelected);
+      const allDepartmentSelected =
+        selectedDepartmentMemberIds.length > 0 &&
+        selectedDepartmentMemberIds.every((id) => next.includes(id));
+
+      setAssignAllBranch(allBranchSelected);
+      setAssignAllDept(allDepartmentSelected);
 
       return next;
     });
@@ -150,11 +226,57 @@ export default function NewTaskPage() {
 
   const onToggleAllBranch = (checked: boolean) => {
     setAssignAllBranch(checked);
+
     if (checked) {
-      setAssigneeIds(candidates.map((c) => c.user_id));
+      const next = candidates.map((c) => c.user_id);
+      setAssigneeIds(next);
+
+      const allDepartmentSelected =
+        selectedDepartmentMemberIds.length > 0 &&
+        selectedDepartmentMemberIds.every((id) => next.includes(id));
+      setAssignAllDept(allDepartmentSelected);
     } else {
-      setAssigneeIds([]); // MVPは単純に空に戻す（必要なら「元の選択に戻す」も可能）
+      setAssigneeIds([]);
+      setAssignAllDept(false);
     }
+  };
+
+  const onToggleAllDepartment = (checked: boolean) => {
+    setAssignAllDept(checked);
+
+    if (checked) {
+      setAssigneeIds((prev) => {
+        const next = Array.from(new Set([...prev, ...selectedDepartmentMemberIds]));
+
+        const allBranchSelected =
+          candidates.length > 0 &&
+          candidates.every((c) => next.includes(c.user_id));
+        setAssignAllBranch(allBranchSelected);
+
+        return next;
+      });
+    } else {
+      setAssigneeIds((prev) => {
+        const next = prev.filter((id) => !selectedDepartmentMemberIds.includes(id));
+
+        const allBranchSelected =
+          candidates.length > 0 &&
+          candidates.every((c) => next.includes(c.user_id));
+        setAssignAllBranch(allBranchSelected);
+
+        return next;
+      });
+    }
+  };
+
+  const onBack = () => {
+    const confirmed = window.confirm(
+      "入力中の内容は保存されません。本当に戻りますか？"
+    );
+
+    if (!confirmed) return;
+
+    router.push("/dashboard");
   };
 
   const onCreate = async (e: React.FormEvent) => {
@@ -175,12 +297,34 @@ export default function NewTaskPage() {
       setSaving(false);
       return;
     }
+    if (scopeType === "department" && !selectedDepartmentId) {
+      setErrorMsg("部署を選択してください。");
+      setSaving(false);
+      return;
+    }
+    if (scopeType === "department") {
+      const selectedDepartment = departments.find((d) => d.id === selectedDepartmentId);
+
+      if (!selectedDepartment) {
+        setErrorMsg("選択された部署が見つかりません。");
+        setSaving(false);
+        return;
+      }
+
+      if (selectedDepartment.branch_id !== membership.branch_id) {
+        setErrorMsg("他支部の部署は選択できません。");
+        setSaving(false);
+        return;
+      }
+    }
 
     const scope_id =
       scopeType === "branch"
         ? membership.branch_id
         : scopeType === "personal"
         ? me.id
+        : scopeType === "department"
+        ? selectedDepartmentId
         : null;
     if (!scope_id) {
       setErrorMsg("scope_id を決定できませんでした");
@@ -252,25 +396,25 @@ export default function NewTaskPage() {
     router.replace("/dashboard");
   };
 
-  const branchName =
-  !membership
-    ? "-"
-    : Array.isArray((membership as any).branches)
-    ? ((membership as any).branches?.[0]?.name ?? "-")
-    : ((membership as any).branches?.name ?? "-");
-
   return (
     <main className="p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">タスク作成</h1>
-          <p className="mt-1 text-sm text-gray-600">
-            依頼者: {me?.email ?? "-"}
-          </p>
+      <div className="max-w-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">タスク作成</h1>
+            <p className="mt-1 text-sm text-gray-600">
+              依頼者: {me?.email ?? "-"}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="rounded-md border px-3 py-2"
+            onClick={onBack}
+          >
+            戻る
+          </button>
         </div>
-        <Link className="rounded-md border px-3 py-2" href="/dashboard">
-          戻る
-        </Link>
       </div>
 
       {loading && <p className="mt-6 text-sm">読み込み中...</p>}
@@ -349,17 +493,46 @@ export default function NewTaskPage() {
                 個人
               </label>
 
-              <label className="flex items-center gap-2 text-gray-400">
-                <input type="radio" name="scope" value="department" disabled />
-                部署（準備中）
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="scope"
+                  value="department"
+                  checked={scopeType === "department"}
+                  onChange={() => setScopeType("department")}
+                />
+                部署
               </label>
             </div>
 
-            <div className="mt-3 text-sm text-gray-700">
-              {scopeType === "branch" && (
-                <>支部: {branchName} </>
-              )}
+            <div className="mt-3 text-sm text-gray-700 space-y-3">
+              {scopeType === "branch" && <>支部: {branchName}</>}
+
               {scopeType === "personal" && <>個人: あなた</>}
+
+              {scopeType === "department" && (
+                <div className="space-y-2">
+                  <div>部署を選択してください</div>
+                  <select
+                    className="w-full rounded-md border px-3 py-2"
+                    value={selectedDepartmentId}
+                    onChange={(e) => setSelectedDepartmentId(e.target.value)}
+                  >
+                    <option value="">部署を選択</option>
+                    {departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {departments.length === 0 && (
+                    <p className="text-xs text-gray-500">
+                      この支部には部署が登録されていません。
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -377,10 +550,28 @@ export default function NewTaskPage() {
                 支部全員に割り当て
               </label>
 
-              <label className="flex items-center gap-2 text-sm text-gray-400">
-                <input type="checkbox" disabled />
-                部署全員に割り当て（準備中）
+              <label
+                className={`flex items-center gap-2 text-sm ${
+                  scopeType === "department" ? "" : "text-gray-400"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={assignAllDept}
+                  onChange={(e) => onToggleAllDepartment(e.target.checked)}
+                  disabled={
+                    scopeType !== "department" ||
+                    !selectedDepartmentId ||
+                    selectedDepartmentMemberIds.length === 0
+                  }
+                />
+                部署全員に割り当て
               </label>
+              {scopeType === "department" && selectedDepartmentId && selectedDepartmentMemberIds.length === 0 && (
+                <p className="text-xs text-gray-500">
+                  この部署には所属メンバーがいません
+                </p>
+              )}
             </div>
 
             {candidates.length === 0 ? (

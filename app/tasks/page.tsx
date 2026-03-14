@@ -5,9 +5,25 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { getDueMeta, dueBadgeClass, dueCardBorderClass, formatDue } from "@/lib/taskDue";
+import { sortTaskListItems, type TaskListSortKey } from "@/lib/taskSort";
+import {
+  buildTaskListItems,
+  buildTaskProgressMap,
+  type ScopeType,
+  type TaskAssigneeRow,
+  type TaskListItem,
+  type TaskRow,
+} from "@/lib/tasks/taskList";
+import type { Dept } from "@/lib/tasks/taskQueries";
+import {
+  fetchMyMembership,
+  fetchBranchUsers,
+  fetchDepartments,
+  fetchBranchTasks,
+  fetchTaskAssignees,
+} from "@/lib/tasks/taskQueries";
 
 type TaskStatus = "todo" | "doing" | "done" | "hold";
-type ScopeType = "branch" | "department" | "personal";
 
 type Membership = {
   branch_id: string;
@@ -16,25 +32,25 @@ type Membership = {
   branches?: { name: string } | { name: string }[] | null;
 };
 
-type Dept = { id: string; name: string };
-
 type BranchUser = {
   user_id: string;
   email: string;
   display_name: string | null;
 };
 
-type TaskRow = {
-  id: string;
-  title: string;
-  description: string | null;
-  requester_id: string;
-  scope_type: ScopeType;
-  scope_id: string;
-  due_at: string | null;
-  status: TaskStatus;
-  created_at: string;
-  updated_at: string;
+type TasksPageData = {
+  membership: Membership;
+  branchUsers: BranchUser[];
+  departments: Dept[];
+  tasks: TaskRow[];
+  assigneesByTask: Record<string, TaskAssigneeRow[]>;
+};
+
+type TaskAssigneeSummary = {
+  assigneeUserIds: string[];
+  assigneeCount: number;
+  doneCount: number;
+  isCompleted: boolean;
 };
 
 function roleLabel(role: Membership["role"]) {
@@ -60,6 +76,42 @@ function scopeTypeLabel(t: ScopeType) {
   return t === "branch" ? "支部" : t === "department" ? "部署" : "個人";
 }
 
+async function loadTasksPageData(params: {
+  supabase: typeof supabase;
+  userId: string;
+}): Promise<TasksPageData> {
+  const { supabase, userId } = params;
+
+  const membership = await fetchMyMembership(supabase, userId);
+  if (!membership) {
+    throw new Error("memberships が未登録です（管理者に登録してください）");
+  }
+
+  const branchUsers = await fetchBranchUsers(supabase, membership.branch_id);
+  const departments = await fetchDepartments(supabase, membership.branch_id);
+
+  const departmentIds = departments.map((d) => d.id);
+  const branchUserIds = branchUsers.map((u) => u.user_id);
+
+  const tasks = await fetchBranchTasks({
+    supabase,
+    branchId: membership.branch_id,
+    departmentIds,
+    branchUserIds,
+  });
+
+  const taskIds = tasks.map((t) => t.id);
+  const assigneesByTask = await fetchTaskAssignees(supabase, taskIds);
+
+  return {
+    membership,
+    branchUsers,
+    departments,
+    tasks,
+    assigneesByTask,
+  };
+}
+
 export default function TasksPage() {
   const router = useRouter();
 
@@ -72,13 +124,12 @@ export default function TasksPage() {
   // フィルタ用の参照データ
   const [departments, setDepartments] = useState<Dept[]>([]);
   const [branchUsers, setBranchUsers] = useState<BranchUser[]>([]);
-  const [assigneesByTask, setAssigneesByTask] = useState<Record<string, string[]>>({});
+  const [assigneesByTask, setAssigneesByTask] = useState<Record<string, TaskAssigneeRow[]>>({});
 
   // UI state
   const [q, setQ] = useState("");
   const [showDone, setShowDone] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<"" | TaskStatus>("");
-  const [sortKey, setSortKey] = useState<"due" | "created">("due");
+  const [sortKey, setSortKey] = useState<TaskListSortKey>("requested_desc");
 
   // 追加要件：管轄/担当者フィルタ
   const [scopeTypeFilter, setScopeTypeFilter] = useState<"" | ScopeType>("");
@@ -90,150 +141,34 @@ export default function TasksPage() {
       setLoading(true);
       setErrorMsg(null);
 
-      // 1) login
       const { data: userData, error: userErr } = await supabase.auth.getUser();
       if (userErr) {
         setErrorMsg(userErr.message);
         setLoading(false);
         return;
       }
+
       if (!userData.user) {
         router.replace("/login");
         return;
       }
 
-      // 2) membership（支部名も取る）
-      const { data: ms, error: msErr } = await supabase
-        .from("memberships")
-        .select(`
-          branch_id,
-          role,
-          branches ( name )
-        `)
-        .eq("user_id", userData.user.id)
-        .order("created_at", { ascending: true })
-        .limit(1);
+      try {
+        const data = await loadTasksPageData({
+          supabase,
+          userId: userData.user.id,
+        });
 
-      if (msErr) {
-        setErrorMsg(msErr.message);
+        setMembership(data.membership);
+        setBranchUsers(data.branchUsers);
+        setDepartments(data.departments);
+        setTasks(data.tasks);
+        setAssigneesByTask(data.assigneesByTask);
+      } catch (err: any) {
+        setErrorMsg(err.message);
+      } finally {
         setLoading(false);
-        return;
       }
-
-      const myMembership = (ms?.[0] ?? null) as Membership | null;
-      if (!myMembership) {
-        setErrorMsg("memberships が未登録です（管理者に登録してください）");
-        setLoading(false);
-        return;
-      }
-      setMembership(myMembership);
-
-      // 3) 支部のユーザー一覧（担当者フィルタ/個人名表示用）
-      const { data: memList, error: memErr } = await supabase
-        .from("memberships")
-        .select(`profiles ( user_id, email, display_name )`)
-        .eq("branch_id", myMembership.branch_id);
-
-      if (memErr) {
-        setErrorMsg(memErr.message);
-        setLoading(false);
-        return;
-      }
-
-      const users = (memList ?? [])
-        .flatMap((r: any) => {
-          const p = r.profiles;
-          if (!p) return [];
-          return Array.isArray(p) ? p : [p];
-        })
-        .map((p: any) => ({
-          user_id: p.user_id as string,
-          email: p.email as string,
-          display_name: (p.display_name ?? null) as string | null,
-        }));
-
-      const uniqUsers = Array.from(new Map(users.map((u) => [u.user_id, u])).values());
-      setBranchUsers(uniqUsers);
-
-      // 4) 支部の部署一覧（部署名表示/フィルタ用）
-      const { data: deptData, error: deptErr } = await supabase
-        .from("departments")
-        .select("id, name")
-        .eq("branch_id", myMembership.branch_id)
-        .order("created_at", { ascending: true });
-
-      if (deptErr) {
-        setErrorMsg(deptErr.message);
-        setLoading(false);
-        return;
-      }
-      setDepartments((deptData ?? []) as Dept[]);
-
-      const departmentIds = (deptData ?? []).map((d: any) => d.id as string);
-      const branchUserIds = uniqUsers.map((u) => u.user_id);
-
-      // 5) tasks（支部/部署/個人 全て）
-      const selectCols =
-        "id,title,description,requester_id,scope_type,scope_id,due_at,status,created_at,updated_at";
-
-      const [
-        { data: tBranch, error: eBranch },
-        tDeptResult,
-        tPersonalResult,
-      ] = await Promise.all([
-        supabase.from("tasks").select(selectCols).eq("scope_type", "branch").eq("scope_id", myMembership.branch_id),
-
-        departmentIds.length === 0
-          ? Promise.resolve({ data: [], error: null } as any)
-          : supabase.from("tasks").select(selectCols).eq("scope_type", "department").in("scope_id", departmentIds),
-
-        branchUserIds.length === 0
-          ? Promise.resolve({ data: [], error: null } as any)
-          : supabase.from("tasks").select(selectCols).eq("scope_type", "personal").in("scope_id", branchUserIds),
-      ]);
-
-      const eDept = (tDeptResult as any).error;
-      const ePersonal = (tPersonalResult as any).error;
-
-      const anyErr = eBranch || eDept || ePersonal;
-      if (anyErr) {
-        setErrorMsg(anyErr.message);
-        setLoading(false);
-        return;
-      }
-
-      const tDept = (tDeptResult as any).data ?? [];
-      const tPersonal = (tPersonalResult as any).data ?? [];
-
-      const allTasks = ([] as any[]).concat(tBranch ?? [], tDept, tPersonal);
-      setTasks(allTasks as TaskRow[]);
-
-      // 6) task_assignees をまとめて取って、担当者フィルタに使う
-      const taskIds = allTasks.map((t: any) => t.id as string);
-      if (taskIds.length > 0) {
-        const { data: taData, error: taErr } = await supabase
-          .from("task_assignees")
-          .select("task_id, user_id")
-          .in("task_id", taskIds);
-
-        if (taErr) {
-          setErrorMsg(taErr.message);
-          setLoading(false);
-          return;
-        }
-
-        const map: Record<string, string[]> = {};
-        for (const row of taData ?? []) {
-          const tid = (row as any).task_id as string;
-          const uid = (row as any).user_id as string;
-          map[tid] = map[tid] ? [...map[tid], uid] : [uid];
-        }
-        setAssigneesByTask(map);
-      } else {
-        setAssigneesByTask({});
-      }
-
-      setLoading(false);
     })();
   }, [router]);
 
@@ -252,7 +187,34 @@ export default function TasksPage() {
     return m;
   }, [branchUsers]);
 
+  const requesterNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const u of branchUsers) {
+      const label = u.display_name ? `${u.display_name}（${u.email}）` : u.email;
+      m.set(u.user_id, label);
+    }
+    return m;
+  }, [branchUsers]);
+
+  const taskProgressById = useMemo(
+    () => buildTaskProgressMap(assigneesByTask),
+    [assigneesByTask]
+  );
+
   const branchName = branchNameOf(membership);
+
+  const taskListItems = useMemo<TaskListItem[]>(
+    () =>
+      buildTaskListItems({
+        tasks,
+        taskProgressById,
+        branchName,
+        deptNameById,
+        requesterNameById,
+        userNameById,
+      }),
+    [tasks, taskProgressById, branchName, deptNameById, requesterNameById, userNameById]
+  );
 
   // 管轄フィルタの選択肢（scope_type に応じて scope_id 候補を出す）
   const scopeIdOptions = useMemo(() => {
@@ -273,13 +235,15 @@ export default function TasksPage() {
   }, [scopeTypeFilter, membership, departments, branchUsers, branchName]);
 
   const filtered = useMemo(() => {
-    let list = [...tasks];
+    let list = [...taskListItems];
 
-    // 完了表示
-    if (!showDone) list = list.filter((t) => t.status !== "done");
+    // 完了表示（task_assignees ベース）
+    if (!showDone) {
+      list = list.filter((t) => !t.progress.isCompleted);
+    }
 
     // ステータス絞り込み
-    if (statusFilter) list = list.filter((t) => t.status === statusFilter);
+    // if (statusFilter) list = list.filter((t) => t.status === statusFilter);
 
     // 検索（タイトル）
     if (q.trim()) {
@@ -288,38 +252,28 @@ export default function TasksPage() {
     }
 
     // 管轄（scope_type）
-    if (scopeTypeFilter) list = list.filter((t) => t.scope_type === scopeTypeFilter);
+    if (scopeTypeFilter) list = list.filter((t) => t.scopeType === scopeTypeFilter);
 
     // 管轄（scope_id）
-    if (scopeIdFilter) list = list.filter((t) => t.scope_id === scopeIdFilter);
+    if (scopeIdFilter) list = list.filter((t) => t.scopeId === scopeIdFilter);
 
     // 担当者（task_assignees）
     if (assigneeFilter) {
-      list = list.filter((t) => (assigneesByTask[t.id] ?? []).includes(assigneeFilter));
+      list = list.filter((t) => t.assigneeUserIds.includes(assigneeFilter));
     }
 
     // 並び替え
-    list.sort((a, b) => {
-      if (sortKey === "created") {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      }
-      // due（nullは最後）
-      const da = a.due_at ? new Date(a.due_at).getTime() : Number.POSITIVE_INFINITY;
-      const db = b.due_at ? new Date(b.due_at).getTime() : Number.POSITIVE_INFINITY;
-      return da - db;
-    });
+    list = sortTaskListItems(list, sortKey);
 
     return list;
   }, [
-    tasks,
+    taskListItems,
     q,
     showDone,
-    statusFilter,
     sortKey,
     scopeTypeFilter,
     scopeIdFilter,
     assigneeFilter,
-    assigneesByTask,
   ]);
 
   // scopeTypeFilter を変えたら scopeIdFilter をリセット（ズレ防止）
@@ -370,29 +324,15 @@ export default function TasksPage() {
           </div>
 
           <div>
-            <label className="block text-xs text-gray-500">ステータス</label>
-            <select
-              className="mt-1 rounded-md border px-2 py-2 text-sm"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-            >
-              <option value="">すべて</option>
-              <option value="todo">未着手</option>
-              <option value="doing">進行中</option>
-              <option value="hold">保留</option>
-              <option value="done">完了</option>
-            </select>
-          </div>
-
-          <div>
             <label className="block text-xs text-gray-500">並び替え</label>
             <select
               className="mt-1 rounded-md border px-2 py-2 text-sm"
               value={sortKey}
-              onChange={(e) => setSortKey(e.target.value as any)}
+              onChange={(e) => setSortKey(e.target.value as TaskListSortKey)}
             >
-              <option value="due">期限（近い順）</option>
-              <option value="created">作成日（新しい順）</option>
+              <option value="requested_desc">依頼日（新しい順）</option>
+              <option value="due_asc">期限（近い順）</option>
+              <option value="progress_desc">進捗（未完了優先）</option>
             </select>
           </div>
 
@@ -457,27 +397,13 @@ export default function TasksPage() {
         {!loading && !errorMsg && filtered.length > 0 && (
           <ul className="mt-4 space-y-3">
             {filtered.map((t) => {
-              const due = getDueMeta(t.due_at);
-
-              // 管轄名（部署名/個人名/支部名）
-              const scopeName =
-                t.scope_type === "branch"
-                  ? branchName
-                  : t.scope_type === "department"
-                  ? deptNameById.get(t.scope_id) ?? "(不明な部署)"
-                  : userNameById.get(t.scope_id) ?? "(不明な個人)";
-
-              // 担当者表示（簡易：人数＋先頭1名）
-              const assignees = assigneesByTask[t.id] ?? [];
-              const assigneePreview =
-                assignees.length === 0
-                  ? "未割当"
-                  : assignees.length === 1
-                  ? userNameById.get(assignees[0]) ?? "1名"
-                  : `${userNameById.get(assignees[0]) ?? "1名"} 他${assignees.length - 1}名`;
+              const due = getDueMeta(t.dueAt, { isCompleted: t.progress.isCompleted });
 
               return (
-                <li key={t.id} className={`rounded-xl border p-4 ${dueCardBorderClass(due.tone)}`}>
+                <li
+                  key={t.id}
+                  className={`rounded-xl border p-4 ${dueCardBorderClass(due.tone)}`}
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <div className="flex items-center justify-between gap-3">
@@ -491,33 +417,50 @@ export default function TasksPage() {
 
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="rounded border px-2 py-0.5 text-xs text-gray-600">
-                            {scopeTypeLabel(t.scope_type)}: {scopeName}
+                            {scopeTypeLabel(t.scopeType)}: {t.scopeName}
                           </span>
 
-                          <span className={`px-2 py-1 rounded border text-xs ${dueBadgeClass(due.tone)}`}>
+                          <span
+                            className={`shrink-0 px-2 py-1 rounded border text-xs ${dueBadgeClass(
+                              due.tone
+                            )}`}
+                          >
                             {due.label}
                           </span>
+
+                          {due.remainingLabel && (
+                            <span className="text-sm font-medium font-semibold text-orange-700">
+                              {due.remainingLabel}
+                            </span>
+                          )}
                         </div>
                       </div>
 
-                      <div className="mt-2 text-sm text-gray-600">{formatDue(t.due_at)}</div>
+                      {t.description && (
+                        <p className="mt-1 text-sm text-gray-600 whitespace-pre-wrap">
+                          {t.description}
+                        </p>
+                      )}
 
                       <div className="mt-2 text-xs text-gray-600">
-                        担当: {assigneePreview}
+                        担当: {t.assigneePreview}
                       </div>
-
-                      {t.description && (
-                        <p className="mt-2 text-sm text-gray-600 whitespace-pre-wrap">{t.description}</p>
-                      )}
                     </div>
 
                     <div className="text-right text-sm shrink-0">
-                      <div className="text-xs text-gray-500">進捗</div>
-                      <div className="mt-1">{t.status}</div>
+                      <div className="mt-2 text-gray-600">
+                        全体進捗: {t.progress.doneCount} / {t.progress.assigneeCount}
+                      </div>
+
+                      <div className="mt-1 text-gray-600">
+                        依頼日時：{formatDue(t.createdAt)}
+                      </div>
+
+                      <div className="mt-1 text-base font-semibold text-gray-900">
+                        期限：{formatDue(t.dueAt)}
+                      </div>
                     </div>
                   </div>
-
-                  <div className="mt-3 text-xs text-gray-500">task_id: {t.id}</div>
                 </li>
               );
             })}
