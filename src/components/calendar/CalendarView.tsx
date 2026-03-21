@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import type { DatesSetArg, EventClickArg } from "@fullcalendar/core";
 import FullCalendar from "@fullcalendar/react";
+import type { DatesSetArg, EventClickArg } from "@fullcalendar/core";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import listPlugin from "@fullcalendar/list";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -44,42 +44,6 @@ function buildCalendarHeaderText(arg: DatesSetArg) {
   };
 }
 
-function formatDateRangeTitle(start: Date, endExclusive: Date) {
-  const end = new Date(endExclusive);
-  end.setDate(end.getDate() - 1);
-
-  const year = start.getFullYear();
-  const startMonth = start.getMonth() + 1;
-  const startDate = start.getDate();
-  const endMonth = end.getMonth() + 1;
-  const endDate = end.getDate();
-
-  const range =
-    startMonth === endMonth
-      ? `${startMonth}/${startDate}-${endDate}`
-      : `${startMonth}/${startDate}-${endMonth}/${endDate}`;
-
-  return {
-    year: String(year),
-    range,
-  };
-}
-
-function buildCalendarHeaderHtml(arg: DatesSetArg) {
-  if (arg.view.type === "listWeek") {
-    const { year, range } = formatDateRangeTitle(arg.start, arg.end);
-    return `${year}<br>${range}`;
-  }
-
-  return arg.view.title;
-}
-
-function getWeekOfMonth(date: Date) {
-  const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
-  const offset = firstDay.getDay();
-  return Math.floor((date.getDate() + offset - 1) / 7) + 1;
-}
-
 function eventColor(colorKey: CalendarEventItem["colorKey"]) {
   switch (colorKey) {
     case "due":
@@ -99,48 +63,77 @@ function eventColor(colorKey: CalendarEventItem["colorKey"]) {
 
 export default function CalendarView({ events }: Props) {
   const router = useRouter();
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const isMobile = useIsMobile();
   const responsiveOptions = buildResponsiveCalendarOptions(isMobile);
-  const [headerTitle, setHeaderTitle] = useState<{ line1: string; line2: string }>({
+  const calendarRef = useRef<FullCalendar | null>(null);
+  const getCalendarApi = () => {
+    return calendarRef.current?.getApi();
+  };
+
+  const [headerTitle, setHeaderTitle] = useState<{
+    line1: string;
+    line2: string;
+  }>({
     line1: "",
     line2: "",
   });
-  const [currentViewType, setCurrentViewType] = useState("");
+
+  const [currentViewType, setCurrentViewType] = useState(
+    isMobile ? "listWeek" : "dayGridMonth"
+  );
 
   const fcEvents = useMemo(
     () =>
-      events.map((event) => ({
-        id: event.id,
-        title:
-          event.type === "assignee_plan"
-            ? event.title
-            : event.label
-            ? `【${event.label}】${event.title}`
-            : event.title,
-        start: event.start,
-        end: undefined,
-        allDay: event.type === "project_event",
-        backgroundColor: eventColor(event.colorKey),
-        borderColor: eventColor(event.colorKey),
-        textColor: "#ffffff",
-        extendedProps: {
-          href: event.href,
-          type: event.type,
-          taskId: event.taskId,
-          projectId: event.projectId,
-          assigneeUserId: event.assigneeUserId,
-          meta: event.meta,
-          priority:
-            event.type === "project_event"
-              ? 0
-              : event.type === "assignee_plan"
-              ? 1
-              : 2,
-          tooltip: event.label ? `【${event.label}】${event.title}` : event.title,
-        },
-      })),
-    [events]
+      events.map((event) => {
+        const isTaskDue = event.type === "task_due";
+        const isProjectEvent = event.type === "project_event";
+        const isAssigneePlan = event.type === "assignee_plan";
+        const isMonthView = currentViewType === "dayGridMonth";
+        const isBandEventInMonth = isMonthView && (isTaskDue || isProjectEvent);
+
+        return {
+          id: event.id,
+          title:
+            isAssigneePlan
+              ? event.title
+              : event.label
+              ? `【${event.label}】${event.title}`
+              : event.title,
+          start: event.start,
+          end: isTaskDue ? undefined : event.end,
+          allDay: isProjectEvent ? true : false,
+
+          backgroundColor: eventColor(event.colorKey),
+          borderColor: eventColor(event.colorKey),
+          textColor: "#ffffff",
+
+          display: isBandEventInMonth ? "block" : "auto",
+
+          classNames: [
+            isTaskDue ? "calendar-task-due-event" : "",
+            isProjectEvent ? "calendar-project-event" : "",
+            isAssigneePlan ? "calendar-assignee-plan-event" : "",
+            isBandEventInMonth ? "calendar-band-event" : "",
+          ].filter(Boolean),
+
+          extendedProps: {
+            href: event.href,
+            type: event.type,
+            taskId: event.taskId,
+            projectId: event.projectId,
+            assigneeUserId: event.assigneeUserId,
+            meta: event.meta,
+            priority:
+              event.type === "project_event"
+                ? 0
+                : event.type === "assignee_plan"
+                ? 1
+                : 2,
+            tooltip: event.label ? `【${event.label}】${event.title}` : event.title,
+          },
+        };
+      }),
+    [events, currentViewType]
   );
 
   const handleEventClick = (arg: EventClickArg) => {
@@ -154,21 +147,100 @@ export default function CalendarView({ events }: Props) {
     setHeaderTitle(buildCalendarHeaderText(arg));
   };
 
+  const handlePrev = () => {
+    console.log("prev clicked");
+    const api = getCalendarApi();
+    if (!api) return;
+    api.prev();
+  };
+
+  const handleNext = () => {
+    console.log("next clicked");
+    const api = getCalendarApi();
+    if (!api) return;
+    api.next();
+  };
+
+  const handleChangeToMonth = () => {
+    console.log("month clicked");
+    const api = getCalendarApi();
+    if (!api) return;
+    api.changeView("dayGridMonth");
+  };
+
+  const handleChangeToList = () => {
+    console.log("list clicked");
+    const api = getCalendarApi();
+    if (!api) return;
+    api.changeView("listWeek");
+  };
+
   return (
-    <div
-      className={`calendar-shell rounded-xl border bg-white p-2 sm:p-4 ${
-        isMobile ? "calendar-shell-mobile" : ""
-      } ${isMobile && currentViewType === "listWeek" ? "calendar-shell-list" : ""}`}
-    >
-      {isMobile && headerTitle.line1 && (
-        <div className="calendar-mobile-header">
-          <div className="calendar-mobile-header-line1">{headerTitle.line1}</div>
-          {headerTitle.line2 && (
-            <div className="calendar-mobile-header-line2">{headerTitle.line2}</div>
-          )}
+    <div className="rounded-xl border bg-white p-2 sm:p-4">
+      {isMobile && (
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handlePrev}
+              className="rounded-md border bg-slate-700 px-4 py-3 text-white"
+            >
+              ＜
+            </button>
+            <button
+              type="button"
+              onClick={handleNext}
+              className="rounded-md border bg-slate-700 px-4 py-3 text-white"
+            >
+              ＞
+            </button>
+          </div>
+
+          <div
+            className={`min-w-0 flex-1 text-center ${
+              currentViewType === "listWeek"
+                ? "calendar-mobile-title calendar-mobile-title-list"
+                : "calendar-mobile-title calendar-mobile-title-month"
+            }`}
+          >
+            <div className="text-xl font-bold leading-tight text-gray-800">
+              {headerTitle.line1}
+            </div>
+            {headerTitle.line2 && (
+              <div className="text-base font-semibold leading-tight text-gray-700">
+                {headerTitle.line2}
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleChangeToMonth}
+              className={`rounded-md border px-4 py-3 ${
+                currentViewType === "dayGridMonth"
+                  ? "bg-slate-800 text-white"
+                  : "bg-slate-700 text-white"
+              }`}
+            >
+              月
+            </button>
+            <button
+              type="button"
+              onClick={handleChangeToList}
+              className={`rounded-md border px-4 py-3 ${
+                currentViewType === "listWeek"
+                  ? "bg-slate-800 text-white"
+                  : "bg-slate-700 text-white"
+              }`}
+            >
+              一覧
+            </button>
+          </div>
         </div>
       )}
       <FullCalendar
+        ref={calendarRef}
         key={isMobile ? "mobile" : "desktop"}
         plugins={[dayGridPlugin, listPlugin, interactionPlugin]}
         locale="ja"
@@ -184,6 +256,8 @@ export default function CalendarView({ events }: Props) {
           }
         }}
         displayEventTime={true}
+        defaultTimedEventDuration="00:01"
+        moreLinkContent={(arg) => `+${arg.num}件`}
         eventTimeFormat={{
           hour: "numeric",
           minute: "2-digit",

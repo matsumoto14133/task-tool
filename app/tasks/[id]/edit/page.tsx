@@ -861,6 +861,7 @@ export default function TaskEditPage() {
           value={descriptionDraft}
           onChange={(e) => setDescriptionDraft(e.target.value)}
           rows={6}
+          placeholder="目的、実施手順など"
         />
         <button
           className="mt-2 rounded-md border px-3 py-2"
@@ -1160,7 +1161,7 @@ export default function TaskEditPage() {
                       rows={3}
                       value={progress?.note ?? ""}
                       onChange={(e) => updateAssigneeNote(userId, e.target.value)}
-                      placeholder="進捗に関する備考を入力"
+                      placeholder="報告事項、進捗に関する補足など"
                     />
                   </div>
 

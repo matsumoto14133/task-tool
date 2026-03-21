@@ -6,17 +6,12 @@ export function buildResponsiveCalendarOptions(
   if (isMobile) {
     return {
       initialView: "listWeek",
-      headerToolbar: {
-        left: "prev,next",
-        center: "",
-        right: "dayGridMonth,listWeek",
-      },
+      headerToolbar: false,
       contentHeight: "auto",
       handleWindowResize: true,
       dayMaxEvents: 1,
       moreLinkClick: "popover",
       buttonText: {
-        today: "今日",
         month: "月",
         list: "一覧",
       },

@@ -19,54 +19,101 @@
   }
 }
 
-@media (max-width: 800px) {
-  .fc .fc-toolbar-title {
-    font-size: 1.2rem;
-    line-height: 1.2;
-    text-align: center;
-  }
+/* ========================================
+   FullCalendar 共通
+======================================== */
+
+.fc .fc-daygrid-event.calendar-band-event {
+  margin-top: 2px;
+  border-radius: 4px;
 }
 
+.fc .fc-daygrid-event.calendar-band-event .fc-event-time {
+  display: none;
+}
+
+.fc .fc-daygrid-event.calendar-band-event .fc-event-main {
+  padding: 2px 6px;
+}
+
+.fc .fc-daygrid-event.calendar-band-event .fc-event-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fc .fc-daygrid-event .fc-event-title,
+.fc .fc-daygrid-event .fc-event-time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ========================================
+   FullCalendar モバイル
+======================================== */
+
 @media (max-width: 767px) {
-  .calendar-shell-mobile {
-    position: relative;
+  .fc .fc-daygrid-day-number {
+    padding: 0.25rem;
+    font-size: 0.8rem;
   }
 
-  .calendar-shell-mobile .fc-toolbar {
-    position: relative;
-    min-height: 72px;
-    align-items: start;
+  .fc .fc-event,
+  .fc .fc-list-event {
+    font-size: 0.8rem;
   }
 
-  .calendar-shell-mobile .fc-toolbar-title {
-    visibility: hidden;
+  .fc .fc-list-table td,
+  .fc .fc-list-table th {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
   }
 
-  .calendar-mobile-header {
-    pointer-events: none;
-    position: absolute;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    text-align: center;
-    z-index: 5;
-    line-height: 1.15;
+  .fc .fc-daygrid-event {
+    margin-top: 1px;
   }
 
-  .calendar-mobile-header-line1 {
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: rgb(31 41 55);
+  .fc .fc-daygrid-event.calendar-band-event {
+    margin-top: 1px;
+    border-radius: 3px;
   }
 
-  .calendar-mobile-header-line2 {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: rgb(55 65 81);
+  .fc .fc-daygrid-event.calendar-band-event .fc-event-main {
+    padding: 0 2px;
+    line-height: 1.1;
   }
 
-  .calendar-shell-mobile.calendar-shell-list .calendar-mobile-header {
-    top: 8px;
+  .fc .fc-daygrid-event.calendar-band-event .fc-event-title {
+    font-size: 0.68rem;
+    line-height: 1.1;
+  }
+
+  .fc .fc-daygrid-more-link {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.75rem;
+  }
+
+  .calendar-mobile-title {
+    display: flex;
+    justify-content: center;
+    min-height: 48px;
+  }
+
+  .calendar-mobile-title-list {
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .calendar-mobile-title-month {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
   }
 }
 

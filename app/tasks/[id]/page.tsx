@@ -437,18 +437,33 @@ export default function TaskDetailPage() {
     }
   }
 
+  function toDatetimeLocalValue(value: string | null | undefined) {
+    if (!value) return "";
+
+    const date = new Date(value);
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+
   return (
-    <div className="p-6 max-w-3xl">
-      <div className="flex items-center justify-between gap-3 mb-6">
-        <div>
+    <div className="max-w-3xl p-4 sm:p-6">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold">タスク詳細</h1>
-          <div className="text-sm text-gray-500">task_id: {task.id}</div>
+          <div className="break-all text-sm text-gray-500">task_id: {task.id}</div>
         </div>
-        <div className="flex gap-2">
+
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
           {canAccessEditPage && (
             <Link
               href={`/tasks/${task.id}/edit`}
-              className="px-4 py-2 border rounded-md"
+              className="w-full rounded-md border px-4 py-2 text-center sm:w-auto"
             >
               タスクを編集する
             </Link>
@@ -456,12 +471,15 @@ export default function TaskDetailPage() {
 
           <button
             onClick={() => router.back()}
-            className="px-4 py-2 border rounded-md"
+            className="w-full rounded-md border px-4 py-2 text-center sm:w-auto"
           >
             戻る
           </button>
 
-          <Link href="/dashboard" className="px-4 py-2 border rounded-md">
+          <Link
+            href="/dashboard"
+            className="w-full rounded-md border px-4 py-2 text-center sm:w-auto"
+          >
             ホームへ
           </Link>
         </div>
@@ -560,10 +578,10 @@ export default function TaskDetailPage() {
 
       {/* 担当者ごとの進捗 */}
       <div className="border rounded-lg p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="font-semibold">担当者ごとの進捗</div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <div>
               <label className="block text-xs text-gray-500">並び替え</label>
               <select
@@ -581,7 +599,7 @@ export default function TaskDetailPage() {
               </select>
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-gray-600 pt-5">
+            <label className="flex items-center gap-2 text-sm text-gray-600 sm:pt-5">
               <input
                 type="checkbox"
                 checked={hideDoneAssignees}
@@ -611,11 +629,11 @@ export default function TaskDetailPage() {
                       : "border-gray-200"
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <div className="font-medium flex items-center gap-2">
-                      {label}
+                  <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2 font-medium">
+                      <span className="break-words">{label}</span>
                       {isMe && (
-                        <span className="text-xs px-2 py-0.5 rounded bg-orange-500 text-white">
+                        <span className="rounded bg-orange-500 px-2 py-0.5 text-xs text-white">
                           あなた
                         </span>
                       )}
@@ -655,6 +673,7 @@ export default function TaskDetailPage() {
                         <textarea
                           className="w-full rounded-md border px-3 py-2 text-sm"
                           rows={3}
+                          placeholder="報告事項、進捗に関する補足など"
                           value={progress?.note ?? ""}
                           onChange={(e) =>
                             setAssigneeProgressMap((prev) => ({
@@ -671,7 +690,7 @@ export default function TaskDetailPage() {
                           }
                         />
                         <button
-                          className="rounded-md border px-3 py-2 text-sm"
+                          className="w-full rounded-md border px-3 py-2 text-sm sm:w-auto"
                           onClick={() => updateMyNote(progress?.note ?? "")}
                           disabled={savingUserId === uid}
                         >
@@ -686,80 +705,71 @@ export default function TaskDetailPage() {
                   </div>
 
                   {isMe && canEditOwnProgress && (
-                    <div className="mt-4 space-y-2">
-                      <p className="text-xs text-gray-500">*以下２項目はあなたにだけ表示されます</p>
-                      <div className="flex gap-12 text-xs text-gray-500">
-                        <div className="w-[260px]">
-                          実施予定日時
-                        </div>
+                    <div className="mt-4 space-y-3">
+                      <p className="text-xs text-gray-500">
+                        *以下２項目はあなたにだけ表示されます
+                      </p>
 
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[260px_minmax(0,1fr)] sm:gap-6">
                         <div>
-                          通知タイミング
-                        </div>
-                      </div>
-
-                      <div className="flex items-start gap-12">
-
-                        <div className="w-[260px]">
+                          <div className="mb-1 text-xs text-gray-500">実施予定日時</div>
                           <input
                             type="datetime-local"
                             className="w-full rounded-md border px-3 py-2 text-sm"
-                            value={
-                              progress?.planned_at
-                                ? new Date(progress.planned_at).toISOString().slice(0, 16)
-                                : ""
-                            }
+                            value={toDatetimeLocalValue(progress?.planned_at)}
                             onChange={(e) => updateMyPlannedAt(e.target.value)}
                             disabled={savingUserId === uid}
                           />
                         </div>
 
-                        <div className="flex flex-col gap-2 text-sm">
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={notifyAtStart}
-                              onChange={(e) => setNotifyAtStart(e.target.checked)}
-                            />
-                            実施予定時刻
-                          </label>
+                        <div className="min-w-0">
+                          <div className="mb-1 text-xs text-gray-500">通知タイミング</div>
 
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={notifyBeforeEnabled}
-                              onChange={(e) => setNotifyBeforeEnabled(e.target.checked)}
-                            />
-                            実施予定
-                            <input
-                              type="number"
-                              min={1}
-                              className="w-20 rounded-md border px-2 py-1"
-                              value={notifyBeforeMinutes}
-                              onChange={(e) => setNotifyBeforeMinutes(e.target.value)}
-                              disabled={!notifyBeforeEnabled}
-                            />
-                            分前
-                          </label>
+                          <div className="flex flex-col gap-3 text-sm">
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={notifyAtStart}
+                                onChange={(e) => setNotifyAtStart(e.target.checked)}
+                              />
+                              <span>実施予定時刻</span>
+                            </label>
 
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={notifyPreviousDayEnabled}
-                              onChange={(e) => setNotifyPreviousDayEnabled(e.target.checked)}
-                            />
-                            実施前日
-                            <input
-                              type="time"
-                              className="rounded-md border px-2 py-1"
-                              value={notifyPreviousDayTime}
-                              onChange={(e) => setNotifyPreviousDayTime(e.target.value)}
-                              disabled={!notifyPreviousDayEnabled}
-                            />
-                          </label>
+                            <label className="flex flex-wrap items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={notifyBeforeEnabled}
+                                onChange={(e) => setNotifyBeforeEnabled(e.target.checked)}
+                              />
+                              <span>実施予定</span>
+                              <input
+                                type="number"
+                                min={1}
+                                className="w-20 rounded-md border px-2 py-1"
+                                value={notifyBeforeMinutes}
+                                onChange={(e) => setNotifyBeforeMinutes(e.target.value)}
+                                disabled={!notifyBeforeEnabled}
+                              />
+                              <span>分前</span>
+                            </label>
 
+                            <label className="flex flex-wrap items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={notifyPreviousDayEnabled}
+                                onChange={(e) => setNotifyPreviousDayEnabled(e.target.checked)}
+                              />
+                              <span>実施前日</span>
+                              <input
+                                type="time"
+                                className="rounded-md border px-2 py-1"
+                                value={notifyPreviousDayTime}
+                                onChange={(e) => setNotifyPreviousDayTime(e.target.value)}
+                                disabled={!notifyPreviousDayEnabled}
+                              />
+                            </label>
+                          </div>
                         </div>
-
                       </div>
                     </div>
                   )}
