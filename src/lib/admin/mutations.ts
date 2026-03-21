@@ -13,6 +13,7 @@ import {
   fetchMembershipDepartments,
   fetchBranchMemberships,
   fetchProfileByEmail,
+  fetchMembershipsByUserId,
 } from "@/lib/admin/queries";
 import type { Membership, Department, MembershipDepartment } from "@/lib/admin/types";
 
@@ -367,6 +368,24 @@ export async function createMembership(
   if (target.user_id === myMembership.user_id) {
     throw new Error("自分自身の role は変更できません");
   }
+
+  const { data: targetMembershipsData, error: targetMembershipsError } =
+    await fetchMembershipsByUserId(target.user_id);
+
+  if (targetMembershipsError) {
+    throw new Error(targetMembershipsError.message);
+  }
+
+  const targetMemberships = (targetMembershipsData ?? []) as Membership[];
+
+  const hasOtherBranchMembership = targetMemberships.some(
+    (membership) => membership.branch_id !== myMembership.branch_id
+  );
+
+  if (hasOtherBranchMembership) {
+    throw new Error("このユーザーはすでに別の支部に所属しているため追加できません");
+  }
+
 
   const { error: upErr } = await supabase
     .from("memberships")

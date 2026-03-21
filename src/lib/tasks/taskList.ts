@@ -14,7 +14,12 @@ export type TaskRow = {
   status: TaskStatus;
   created_at: string;
   updated_at: string;
-};
+  project_id: string | null;
+  projects?: {
+    id: string;
+    name: string;
+  } | null;
+}; 
 
 export type TaskAssigneeRow = {
   task_id: string;
@@ -53,6 +58,25 @@ export type TaskListItem = {
   projectId: string | null;
   projectName: string | null;
 };
+
+export function buildUserDisplayLabel(params: {
+  displayName: string | null;
+  email: string | null;
+}): string {
+  const { displayName, email } = params;
+  return displayName ? `${displayName}（${email ?? "-"}）` : email ?? "-";
+}
+
+export function buildScopeBadgeLabel(params: {
+  scopeType: ScopeType;
+  scopeName: string;
+}): string {
+  const { scopeType, scopeName } = params;
+
+  if (scopeType === "department") return scopeName;
+  if (scopeType === "branch") return "支部";
+  return "個人";
+}
 
 export function buildTaskProgressMap(
   assigneesByTask: Record<string, TaskAssigneeRow[]>
@@ -135,8 +159,8 @@ export function buildTaskListItems({
       assigneePreview,
       progress,
 
-      projectId: null,
-      projectName: null,
+      projectId: t.project_id ?? null,
+      projectName: t.projects?.name ?? null,
     };
   });
 }

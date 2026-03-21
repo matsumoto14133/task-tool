@@ -85,6 +85,14 @@ export async function fetchDepartments(
   return (data ?? []) as Dept[];
 }
 
+function normalizeJoinedProject(
+  value: { id: string; name: string } | { id: string; name: string }[] | null | undefined
+): { id: string; name: string } | null {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+}
+
 export async function fetchBranchTasks(params: {
   supabase: SupabaseClient;
   branchId: string;
@@ -93,8 +101,23 @@ export async function fetchBranchTasks(params: {
 }): Promise<TaskRow[]> {
   const { supabase, branchId, departmentIds, branchUserIds } = params;
 
-  const selectCols =
-    "id,title,description,requester_id,scope_type,scope_id,due_at,status,created_at,updated_at";
+  const selectCols = `
+    id,
+    title,
+    description,
+    requester_id,
+    scope_type,
+    scope_id,
+    due_at,
+    status,
+    created_at,
+    updated_at,
+    project_id,
+    projects (
+      id,
+      name
+    )
+  `;
 
   const [
     { data: tBranch, error: eBranch },
@@ -132,10 +155,27 @@ export async function fetchBranchTasks(params: {
     throw new Error(anyErr.message);
   }
 
-  const tDept = ((tDeptResult as any).data ?? []) as TaskRow[];
-  const tPersonal = ((tPersonalResult as any).data ?? []) as TaskRow[];
+  const normalizeTaskRows = (rows: any[]): TaskRow[] =>
+    rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      requester_id: row.requester_id,
+      scope_type: row.scope_type,
+      scope_id: row.scope_id,
+      due_at: row.due_at,
+      status: row.status,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      project_id: row.project_id ?? null,
+      projects: normalizeJoinedProject(row.projects),
+    }));
 
-  return ([] as TaskRow[]).concat((tBranch ?? []) as TaskRow[], tDept, tPersonal);
+  const tBranchRows = normalizeTaskRows(((tBranch ?? []) as any[]));
+  const tDeptRows = normalizeTaskRows((((tDeptResult as any).data ?? []) as any[]));
+  const tPersonalRows = normalizeTaskRows((((tPersonalResult as any).data ?? []) as any[]));
+
+  return ([] as TaskRow[]).concat(tBranchRows, tDeptRows, tPersonalRows);
 }
 
 export async function fetchTaskAssignees(

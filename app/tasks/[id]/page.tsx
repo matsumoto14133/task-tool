@@ -5,6 +5,24 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { getDueMeta, dueBadgeClass, formatDue } from "@/lib/taskDue";
+import { buildScopeBadgeLabel, buildUserDisplayLabel } from "@/lib/tasks/taskList";
+import { 
+  fetchDepartments,
+  fetchMyMembership,
+  fetchBranchUsers,
+  type Dept 
+} from "@/lib/tasks/taskQueries";
+import {
+  profileLabel,
+  profileLabelWithEmail,
+  buildProfileMap,
+} from "@/lib/tasks/taskUsers"
+import {
+  statusLabel,
+  assigneeStatusPriority,
+  formatDateTime,
+} from "@/lib/tasks/taskProgress"
+import { sortAssigneeIds, type AssigneeSortType } from "@/lib/tasks/taskAssignees";
 
 type TaskStatus = "todo" | "doing" | "done" | "hold";
 type ScopeType = "branch" | "department" | "personal";
@@ -28,6 +46,11 @@ type Task = {
   attachment_url: string | null;
   created_at: string;
   updated_at: string;
+  project_id: string | null;
+  projects?: {
+    id: string;
+    name: string;
+  } | null;
 };
 
 type Profile = {
@@ -43,58 +66,6 @@ type AssigneeProgress = {
   planned_at: string | null;
   updated_at: string;
 };
-
-// 更新日時表示用関数
-function formatDateTime(value: string | null) {
-  if (!value) return "未更新";
-  const d = new Date(value);
-  return d.toLocaleString("ja-JP");
-}
-
-function scopeTypeLabel(scopeType: ScopeType) {
-  switch (scopeType) {
-    case "branch":
-      return "支部";
-    case "department":
-      return "部署";
-    case "personal":
-      return "個人";
-    default:
-      return scopeType;
-  }
-}
-
-function statusLabel(status: TaskStatus) {
-  switch (status) {
-    case "todo":
-      return "未着手";
-    case "doing":
-      return "進行中";
-    case "hold":
-      return "保留";
-    case "done":
-      return "完了";
-    default:
-      return status;
-  }
-}
-
-function profileLabel(profile: Profile | undefined, fallbackUserId?: string) {
-  if (!profile) return fallbackUserId ?? "不明なユーザー";
-  if (profile.display_name?.trim()) return profile.display_name;
-  return profile.email;
-}
-
-function dueTone(dueAt: string | null) {
-  if (!dueAt) return "border-gray-200 bg-gray-50 text-gray-700";
-  const due = new Date(dueAt).getTime();
-  const now = Date.now();
-  const diffHours = (due - now) / (1000 * 60 * 60);
-
-  if (diffHours < 0) return "border-red-300 bg-red-50 text-red-700";
-  if (diffHours <= 48) return "border-orange-300 bg-orange-50 text-orange-700";
-  return "border-emerald-200 bg-emerald-50 text-emerald-700";
-}
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -118,13 +89,26 @@ export default function TaskDetailPage() {
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hideDoneAssignees, setHideDoneAssignees] = useState(false);
+  const [assigneeSort, setAssigneeSort] = useState<AssigneeSortType>("name_asc");
 
   const [me, setMe] = useState<{ id: string; email: string | null } | null>(null);
   const [membership, setMembership] = useState<Membership | null>(null);
-  const isManagerOrAdmin = 
+  const [departments, setDepartments] = useState<Dept[]>([]);
+  const [branchUsers, setBranchUsers] = useState<
+    { user_id: string; email: string; display_name: string | null }[]
+  >([]);
+
+
+  const [notifyAtStart, setNotifyAtStart] = useState(false);
+  const [notifyBeforeEnabled, setNotifyBeforeEnabled] = useState(true);
+  const [notifyBeforeMinutes, setNotifyBeforeMinutes] = useState("30");
+  const [notifyPreviousDayEnabled, setNotifyPreviousDayEnabled] = useState(false);
+  const [notifyPreviousDayTime, setNotifyPreviousDayTime] = useState("09:00");
+
+  const isManagerOrAdmin =
     membership?.role === "manager" || membership?.role === "admin";
-  const isMyTask = me ? assigneeIds.includes(me.id) : false;
-  const canAccessEditPage = isManagerOrAdmin;
+  const isRequester = !!me && task?.requester_id === me.id;
+  const canAccessEditPage = isManagerOrAdmin || isRequester;
   const isAssignee = me ? assigneeIds.includes(me.id) : false;
   const canEditOwnProgress = isAssignee;
 
@@ -156,7 +140,7 @@ export default function TaskDetailPage() {
       return;
     }
 
-    // ✅ ログインユーザーIDはローカル変数として固定で使う
+    // ログインユーザーIDはローカル変数として固定で使う
     const myUserId = userData.user.id;
 
     // stateにも保存（表示用）
@@ -183,6 +167,14 @@ export default function TaskDetailPage() {
       setLoading(false);
       return;
     }
+    try {
+      const nextDepartments = await fetchDepartments(supabase, myBranchId);
+      setDepartments(nextDepartments);
+    } catch (e: any) {
+      setError(e?.message ?? "部署一覧の取得に失敗しました");
+      setLoading(false);
+      return;
+    }
 
     // A) 同一branchの memberships から user_id を取る
     const { data: memList, error: memErr } = await supabase
@@ -203,7 +195,13 @@ export default function TaskDetailPage() {
       // 1) task本体
       const { data: taskData, error: taskErr } = await supabase
         .from("tasks")
-        .select("*")
+        .select(`
+          *,
+          projects (
+            id,
+            name
+          )
+        `)
         .eq("id", taskId)
         .single();
 
@@ -245,6 +243,64 @@ export default function TaskDetailPage() {
       setLoading(false);
     }
   }
+
+  const assigneeCount = assigneeIds.length;
+  const doneCount = assigneeIds.filter(
+    (uid) => assigneeProgressMap[uid]?.status === "done"
+  ).length;
+
+  const requesterName = useMemo(() => {
+    if (!task?.requester_id) return "-";
+
+    const requester = profiles.find((p) => p.user_id === task.requester_id);
+    if (!requester) return task.requester_id;
+
+    return requester.display_name
+      ? `${requester.display_name}（${requester.email}）`
+      : requester.email;
+  }, [task, profiles]);
+
+  const deptNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of departments) {
+      m.set(d.id, d.name);
+    }
+    return m;
+  }, [departments]);
+  const profileById = useMemo(() => buildProfileMap(profiles), [profiles]);
+
+  const due = getDueMeta(task?.due_at ?? null, {
+    isCompleted: assigneeCount > 0 && doneCount === assigneeCount,
+  });
+
+  const personalScopeProfile =
+    task?.scope_type === "personal" && task.scope_id
+      ? profileById.get(task.scope_id)
+      : undefined;
+
+  const scopeBadgeLabel = task
+    ? task.scope_type === "personal"
+      ? `個人: ${profileLabelWithEmail(personalScopeProfile, task.scope_id ?? undefined)}`
+      : buildScopeBadgeLabel({
+          scopeType: task.scope_type,
+          scopeName:
+            task.scope_type === "department"
+              ? task.scope_id
+                ? deptNameById.get(task.scope_id) ?? "-"
+                : "-"
+              : "",
+        })
+    : "";
+
+  const sortedAssignees = sortAssigneeIds({
+    assigneeIds,
+    hideDoneAssignees,
+    assigneeProgressMap,
+    assigneeSort,
+    meId: me?.id ?? null,
+    profileById,
+    assigneeStatusPriority,
+  });
 
   if (loading) {
     return (
@@ -381,18 +437,6 @@ export default function TaskDetailPage() {
     }
   }
 
-  const dueClass = dueTone(task.due_at);
-  const due = getDueMeta(task.due_at);
-  const visibleAssigneeIds = hideDoneAssignees
-    ? assigneeIds.filter((uid) => assigneeProgressMap[uid]?.status !== "done")
-    : assigneeIds;
-
-  const sortedAssignees = [...visibleAssigneeIds].sort((a, b) => {
-    if (a === me?.id) return -1;
-    if (b === me?.id) return 1;
-    return 0;
-  });
-
   return (
     <div className="p-6 max-w-3xl">
       <div className="flex items-center justify-between gap-3 mb-6">
@@ -418,7 +462,7 @@ export default function TaskDetailPage() {
           </button>
 
           <Link href="/dashboard" className="px-4 py-2 border rounded-md">
-            ホーム
+            ホームへ
           </Link>
         </div>
       </div>
@@ -431,27 +475,58 @@ export default function TaskDetailPage() {
 
       {/* 基本情報 */}
       {canEditOwnProgress && (
-        <div className="mb-4 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+        <div className="mb-4 rounded-md border border-orange-200 bg-orange-50 p-3 text-sm text-orange-700">
           あなたはこのタスクの担当者です。このページから進捗更新が可能です。
         </div>
       )}
       <div className="border rounded-lg p-4 mb-4">
         <div className="text-xl font-semibold mb-1">{task.title}</div>
 
-        <div className="flex flex-wrap items-center gap-3 text-sm mt-2">
-          <div className={`px-2 py-1 rounded border ${dueBadgeClass(due.tone)}`}>
-            {formatDue(task.due_at)}（{due.label}）
-          </div>
+        <div className="mt-2 space-y-2 text-sm">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-gray-900">
+                期限: {formatDue(task.due_at)}
+              </span>
 
-          <div className="px-2 py-1 rounded border border-gray-200 bg-gray-50 text-gray-700">
-            管轄: {scopeTypeLabel(task.scope_type)}
-            {task.scope_id ? `（${task.scope_id}）` : ""}
+              <span
+                className={`px-2 py-0.5 rounded border text-xs ${dueBadgeClass(
+                  due.tone
+                )}`}
+              >
+                {due.label}
+              </span>
+
+              {due.remainingLabel && (
+                <span className="text-sm font-semibold text-orange-700">
+                  {due.remainingLabel}
+                </span>
+              )}
+            </div>
+
+            <div className="px-2 py-0.5 rounded border border-gray-200 bg-gray-50 text-xs text-gray-700">
+              管轄: {scopeBadgeLabel}
+            </div>
+
+            {task.projects && (
+              <Link
+                href={`/projects/${task.projects.id}`}
+                className="inline-flex items-center px-2 py-0.5 rounded border border-blue-200 bg-blue-50 text-xs text-blue-700"
+              >
+                {task.projects.name}
+              </Link>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-gray-500">全体進捗</span>
+            <span className="text-gray-500">依頼者:</span>
+            <p className="text-sm text-gray-700">{requesterName}</p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500">全体進捗:</span>
             <div className="text-sm text-gray-700">
-              {statusLabel(task.status)}
+              {doneCount} / {assigneeCount}
             </div>
           </div>
         </div>
@@ -485,17 +560,36 @@ export default function TaskDetailPage() {
 
       {/* 担当者ごとの進捗 */}
       <div className="border rounded-lg p-4">
-        <div className="flex items-center justify-between gap-3 mb-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
           <div className="font-semibold">担当者ごとの進捗</div>
 
-          <label className="flex items-center gap-2 text-sm text-gray-600">
-            <input
-              type="checkbox"
-              checked={hideDoneAssignees}
-              onChange={(e) => setHideDoneAssignees(e.target.checked)}
-            />
-            完了を非表示
-          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <div>
+              <label className="block text-xs text-gray-500">並び替え</label>
+              <select
+                className="mt-1 rounded-md border px-2 py-2 text-sm"
+                value={assigneeSort}
+                onChange={(e) =>
+                  setAssigneeSort(
+                    e.target.value as "name_asc" | "updated_desc" | "status_priority"
+                  )
+                }
+              >
+                <option value="name_asc">名前順</option>
+                <option value="updated_desc">最終更新日順</option>
+                <option value="status_priority">完了→進行中→未着手→保留</option>
+              </select>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-gray-600 pt-5">
+              <input
+                type="checkbox"
+                checked={hideDoneAssignees}
+                onChange={(e) => setHideDoneAssignees(e.target.checked)}
+              />
+              完了を非表示
+            </label>
+          </div>
         </div>
 
         {assigneeIds.length === 0 ? (
@@ -503,7 +597,7 @@ export default function TaskDetailPage() {
         ) : (
           <div className="space-y-4">
             {sortedAssignees.map((uid) => {
-              const p = profiles.find((x) => x.user_id === uid);
+              const p = profileById.get(uid);
               const label = profileLabel(p, uid);
               const progress = assigneeProgressMap[uid];
               const isMe = me?.id === uid;
@@ -513,7 +607,7 @@ export default function TaskDetailPage() {
                   key={uid}
                   className={`rounded-lg border p-3 ${
                     isMe
-                      ? "border-2 border-green-400"
+                      ? "border-2 border-orange-400"
                       : "border-gray-200"
                   }`}
                 >
@@ -521,7 +615,7 @@ export default function TaskDetailPage() {
                     <div className="font-medium flex items-center gap-2">
                       {label}
                       {isMe && (
-                        <span className="text-xs px-2 py-0.5 rounded bg-green-600 text-white">
+                        <span className="text-xs px-2 py-0.5 rounded bg-orange-500 text-white">
                           あなた
                         </span>
                       )}
@@ -552,25 +646,6 @@ export default function TaskDetailPage() {
                       </div>
                     )}
                   </div>
-
-                  {isMe && canEditOwnProgress && (
-                    <div className="mb-3">
-                      <div className="text-xs text-gray-500 mb-1">実施予定日時（この項目はあなたにだけ表示されます）</div>
-                      <div className="space-y-2">
-                        <input
-                          type="datetime-local"
-                          className="rounded-md border px-3 py-2 text-sm"
-                          value={
-                            progress?.planned_at
-                              ? new Date(progress.planned_at).toISOString().slice(0, 16)
-                              : ""
-                          }
-                          onChange={(e) => updateMyPlannedAt(e.target.value)}
-                          disabled={savingUserId === uid}
-                        />
-                      </div>
-                    </div>
-                  )}
 
                   <div>
                     <div className="text-xs text-gray-500 mb-1">備考</div>
@@ -609,6 +684,85 @@ export default function TaskDetailPage() {
                       </div>
                     )}
                   </div>
+
+                  {isMe && canEditOwnProgress && (
+                    <div className="mt-4 space-y-2">
+                      <p className="text-xs text-gray-500">*以下２項目はあなたにだけ表示されます</p>
+                      <div className="flex gap-12 text-xs text-gray-500">
+                        <div className="w-[260px]">
+                          実施予定日時
+                        </div>
+
+                        <div>
+                          通知タイミング
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-12">
+
+                        <div className="w-[260px]">
+                          <input
+                            type="datetime-local"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={
+                              progress?.planned_at
+                                ? new Date(progress.planned_at).toISOString().slice(0, 16)
+                                : ""
+                            }
+                            onChange={(e) => updateMyPlannedAt(e.target.value)}
+                            disabled={savingUserId === uid}
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2 text-sm">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={notifyAtStart}
+                              onChange={(e) => setNotifyAtStart(e.target.checked)}
+                            />
+                            実施予定時刻
+                          </label>
+
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={notifyBeforeEnabled}
+                              onChange={(e) => setNotifyBeforeEnabled(e.target.checked)}
+                            />
+                            実施予定
+                            <input
+                              type="number"
+                              min={1}
+                              className="w-20 rounded-md border px-2 py-1"
+                              value={notifyBeforeMinutes}
+                              onChange={(e) => setNotifyBeforeMinutes(e.target.value)}
+                              disabled={!notifyBeforeEnabled}
+                            />
+                            分前
+                          </label>
+
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={notifyPreviousDayEnabled}
+                              onChange={(e) => setNotifyPreviousDayEnabled(e.target.checked)}
+                            />
+                            実施前日
+                            <input
+                              type="time"
+                              className="rounded-md border px-2 py-1"
+                              value={notifyPreviousDayTime}
+                              onChange={(e) => setNotifyPreviousDayTime(e.target.value)}
+                              disabled={!notifyPreviousDayEnabled}
+                            />
+                          </label>
+
+                        </div>
+
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

@@ -30,6 +30,16 @@ type AssigneeCandidate = {
   display_name: string | null;
 };
 
+type Project = {
+  id: string;
+  name: string;
+};
+
+type ProjectScheduleItem = {
+  eventName: string;
+  date: string;
+};
+
 function candidateLabel(candidate: AssigneeCandidate) {
   if (candidate.display_name?.trim()) return candidate.display_name;
   return candidate.email;
@@ -52,6 +62,14 @@ export default function NewTaskPage() {
   const [scopeType, setScopeType] = useState<ScopeType>("branch");
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectSelection, setProjectSelection] = useState("");
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDescription, setNewProjectDescription] = useState("");
+  const [newProjectAttachmentUrl, setNewProjectAttachmentUrl] = useState("");
+  const [newProjectSchedules, setNewProjectSchedules] = useState<ProjectScheduleItem[]>([
+    { eventName: "", date: "" },
+  ]);
 
   // メンバーシップ関連
   const [membership, setMembership] = useState<Membership | null>(null);
@@ -138,6 +156,21 @@ export default function NewTaskPage() {
       }
 
       setDepartments((deptList ?? []) as Department[]);
+
+      // 2.55) projects（同じ支部のプロジェクト一覧）
+      const { data: projectList, error: projectErr } = await supabase
+        .from("projects")
+        .select("id, name")
+        .eq("branch_id", myMembership.branch_id)
+        .order("created_at", { ascending: true });
+
+      if (projectErr) {
+        setErrorMsg(projectErr.message);
+        setLoading(false);
+        return;
+      }
+
+      setProjects((projectList ?? []) as Project[]);
 
       // 2.6) membership_departments（支部内の部署所属）
       const { data: mdList, error: mdErr } = await supabase
@@ -269,6 +302,92 @@ export default function NewTaskPage() {
     }
   };
 
+  const addProjectScheduleRow = () => {
+    setNewProjectSchedules((prev) => [...prev, { eventName: "", date: "" }]);
+  };
+
+  const updateProjectScheduleRow = (
+    index: number,
+    key: keyof ProjectScheduleItem,
+    value: string
+  ) => {
+    setNewProjectSchedules((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, [key]: value } : item))
+    );
+  };
+
+  const removeProjectScheduleRow = (index: number) => {
+    setNewProjectSchedules((prev) => {
+      if (prev.length === 1) {
+        return [{ eventName: "", date: "" }];
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const createProjectIfNeeded = async () => {
+    if (!me || !membership) {
+      setErrorMsg("ユーザー情報または所属情報が未取得です");
+      return null;
+    }
+
+    if (projectSelection === "") {
+      return null;
+    }
+
+    if (projectSelection !== "__new__") {
+      return projectSelection;
+    }
+
+    if (!newProjectName.trim()) {
+      setErrorMsg("新規プロジェクト名を入力してください。");
+      return null;
+    }
+
+    const normalizedSchedules = newProjectSchedules
+      .map((item) => ({
+        eventName: item.eventName.trim(),
+        date: item.date,
+      }))
+      .filter((item) => item.eventName || item.date);
+
+    const hasInvalidSchedule = normalizedSchedules.some(
+      (item) => !item.eventName || !item.date
+    );
+
+    if (hasInvalidSchedule) {
+      setErrorMsg("スケジュールはイベント名と日程をセットで入力してください。");
+      return null;
+    }
+
+    const { data: newProject, error: projectInsertErr } = await supabase
+      .from("projects")
+      .insert({
+        branch_id: membership.branch_id,
+        requester_id: me.id,
+        name: newProjectName.trim(),
+        description: newProjectDescription.trim()
+          ? newProjectDescription.trim()
+          : null,
+        schedule:
+          normalizedSchedules.length > 0
+            ? JSON.stringify(normalizedSchedules)
+            : null,
+        attachment_url: newProjectAttachmentUrl.trim()
+          ? newProjectAttachmentUrl.trim()
+          : null,
+      })
+      .select("id")
+      .single();
+
+    if (projectInsertErr) {
+      setErrorMsg(`プロジェクトの作成に失敗しました: ${projectInsertErr.message}`);
+      return null;
+    }
+
+    return newProject.id as string;
+  };
+
   const onBack = () => {
     const confirmed = window.confirm(
       "入力中の内容は保存されません。本当に戻りますか？"
@@ -276,7 +395,7 @@ export default function NewTaskPage() {
 
     if (!confirmed) return;
 
-    router.push("/dashboard");
+    router.back();
   };
 
   const onCreate = async (e: React.FormEvent) => {
@@ -331,6 +450,14 @@ export default function NewTaskPage() {
       setSaving(false);
       return;
     }
+
+    const projectId = await createProjectIfNeeded();
+
+    if (projectSelection === "__new__" && !projectId) {
+      setSaving(false);
+      return;
+    }
+  
     if (assigneeIds.length === 0) {
       setErrorMsg("担当者を1人以上選んでください。");
       setSaving(false);
@@ -364,6 +491,7 @@ export default function NewTaskPage() {
         due_at: dueAtIso,
         status: "todo" as TaskStatus,
         attachment_url: attachmentUrl.trim() ? attachmentUrl.trim() : null,
+        project_id: projectId,
       })
       .select("id")
       .single();
@@ -393,6 +521,22 @@ export default function NewTaskPage() {
     }
 
     // 作成後はdashboardへ
+    router.replace("/dashboard");
+  };
+
+  const onCreateProjectOnly = async () => {
+    if (!me || !membership) return;
+
+    setSaving(true);
+    setErrorMsg(null);
+
+    const projectId = await createProjectIfNeeded();
+
+    if (!projectId) {
+      setSaving(false);
+      return;
+    }
+
     router.replace("/dashboard");
   };
 
@@ -438,6 +582,7 @@ export default function NewTaskPage() {
               className="mt-1 w-full rounded-md border px-3 py-2"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              placeholder="目的、実施手順など"
               rows={4}
             />
           </div>
@@ -594,13 +739,129 @@ export default function NewTaskPage() {
             )}
           </div>
 
-          <button
-            className="rounded-md border px-4 py-2 font-medium disabled:opacity-50"
-            type="submit"
-            disabled={saving}
-          >
-            {saving ? "作成中..." : "タスクを作成"}
-          </button>
+          <div className="rounded-xl border p-4">
+            <div className="font-semibold mb-2">プロジェクト</div>
+
+            <select
+              className="w-full rounded-md border px-3 py-2"
+              value={projectSelection}
+              onChange={(e) => setProjectSelection(e.target.value)}
+            >
+              <option value="">選択なし</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+              <option value="__new__">＋ 新規プロジェクトを作成</option>
+            </select>
+
+            {projectSelection === "__new__" && (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium">プロジェクト名</label>
+                  <input
+                    className="mt-1 w-full rounded-md border px-3 py-2"
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    placeholder="プロジェクト名を入力"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium">スケジュール</label>
+                  <div className="mt-2 space-y-3">
+                    {newProjectSchedules.map((item, index) => (
+                      <div key={index} className="rounded-lg border p-3 space-y-2">
+                        <div>
+                          <label className="block text-xs text-gray-600">イベント名</label>
+                          <input
+                            className="mt-1 w-full rounded-md border px-3 py-2"
+                            value={item.eventName}
+                            onChange={(e) =>
+                              updateProjectScheduleRow(index, "eventName", e.target.value)
+                            }
+                            placeholder="例: キックオフ"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs text-gray-600">日程</label>
+                          <input
+                            type="date"
+                            className="mt-1 w-full rounded-md border px-3 py-2"
+                            value={item.date}
+                            onChange={(e) =>
+                              updateProjectScheduleRow(index, "date", e.target.value)
+                            }
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          className="text-sm text-red-600"
+                          onClick={() => removeProjectScheduleRow(index)}
+                        >
+                          この行を削除
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="mt-3 rounded-md border px-3 py-2 text-sm"
+                    onClick={addProjectScheduleRow}
+                  >
+                    ＋ スケジュールを追加
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium">プロジェクトの説明</label>
+                  <textarea
+                    className="mt-1 w-full rounded-md border px-3 py-2"
+                    value={newProjectDescription}
+                    onChange={(e) => setNewProjectDescription(e.target.value)}
+                    rows={4}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium">プロジェクト関連資料</label>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Google DriveのURLを貼ってください。
+                  </p>
+                  <input
+                    type="url"
+                    className="mt-1 w-full rounded-md border px-3 py-2"
+                    value={newProjectAttachmentUrl}
+                    onChange={(e) => setNewProjectAttachmentUrl(e.target.value)}
+                    placeholder="https://drive.google.com/..."
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              className="rounded-md border px-4 py-2 font-medium disabled:opacity-50"
+              type="submit"
+              disabled={saving}
+            >
+              {saving ? "作成中..." : "タスクを作成"}
+            </button>
+
+            <button
+              type="button"
+              className="rounded-md border px-4 py-2 font-medium disabled:opacity-50"
+              disabled={saving || projectSelection !== "__new__"}
+              onClick={onCreateProjectOnly}
+            >
+              {saving ? "作成中..." : "プロジェクトのみ作成"}
+            </button>
+          </div>
         </form>
       )}
     </main>

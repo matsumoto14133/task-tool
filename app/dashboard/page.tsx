@@ -11,6 +11,15 @@ import {
   sortCommonTasks,
   sortDashboardTasks,
 } from "@/lib/taskSort";
+import {
+  buildScopeBadgeLabel,
+  buildUserDisplayLabel,
+} from "@/lib/tasks/taskList";
+import {
+  fetchBranchUsers,
+  fetchDepartments,
+} from "@/lib/tasks/taskQueries";
+import type { Dept } from "@/lib/tasks/taskQueries";
 
 type TaskStatus = "todo" | "doing" | "done" | "hold";
 
@@ -25,6 +34,11 @@ type TaskRow = {
   status: TaskStatus;
   created_at: string;
   updated_at: string;
+  project_id: string | null;
+  projects?: {
+    id: string;
+    name: string;
+  } | null;
 };
 
 type TaskAssigneeProgress = {
@@ -51,6 +65,12 @@ type Membership = {
   role: "member" | "manager" | "admin";
 };
 
+type BranchUser = {
+  user_id: string;
+  email: string;
+  display_name: string | null;
+};
+
 type BranchRow = {
   id: string;
   name: string;
@@ -64,6 +84,14 @@ type DepartmentLinkRow = {
 function normalizeTasks(x: TaskRow | TaskRow[] | null): TaskRow[] {
   if (!x) return [];
   return Array.isArray(x) ? x : [x];
+}
+
+function normalizeAssigneeRows(rows: any[]): AssigneeRow[] {
+  return rows.map((row) => ({
+    task_id: row.task_id,
+    status: row.status,
+    tasks: normalizeTasks(row.tasks).map(normalizeTaskRow),
+  }));
 }
 
 function getRoleLabel(role: string | null | undefined) {
@@ -112,6 +140,32 @@ function buildDashboardTask(
   };
 }
 
+function normalizeTaskRow(row: any): TaskRow {
+  const projectValue = Array.isArray(row.projects)
+    ? row.projects[0] ?? null
+    : row.projects ?? null;
+
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    requester_id: row.requester_id,
+    scope_type: row.scope_type,
+    scope_id: row.scope_id,
+    due_at: row.due_at,
+    status: row.status,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    project_id: row.project_id ?? null,
+    projects: projectValue
+      ? {
+          id: projectValue.id,
+          name: projectValue.name,
+        }
+      : null,
+  };
+}
+
 export default function DashboardPage() { // ページコンポーネント（部品化）→一部を他のファイルから呼び出せる
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
@@ -126,6 +180,8 @@ export default function DashboardPage() { // ページコンポーネント（�
   const [membership, setMembership] = useState<Membership | null>(null);
   const [branch, setBranch] = useState<BranchRow | null>(null);
   const [departmentNames, setDepartmentNames] = useState<string[]>([]);
+  const [departments, setDepartments] = useState<Dept[]>([]);
+  const [branchUsers, setBranchUsers] = useState<BranchUser[]>([]);
   const [requestedTasks, setRequestedTasks] = useState<DashboardTask[]>([]);
   const [me, setMe] = useState<{
     id: string;
@@ -165,7 +221,28 @@ export default function DashboardPage() { // ページコンポーネント（�
     return sortCommonTasks(filtered, requestedTaskSort);
   }, [requestedTasks, showCompletedRequestedTasks, requestedTaskSort]);
 
-  const isManager = membership?.role === "manager" || membership?.role === "admin";
+  const deptNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of departments) {
+      m.set(d.id, d.name);
+    }
+    return m;
+  }, [departments]);
+
+  const requesterNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const u of branchUsers) {
+      m.set(
+        u.user_id,
+        buildUserDisplayLabel({
+          displayName: u.display_name,
+          email: u.email,
+        })
+      );
+    }
+    return m;
+  }, [branchUsers]);
+
   const branchLabel = branch?.name ?? "未所属";
   const departmentLabel =
     departmentNames.length > 0 ? departmentNames.join(" / ") : "未所属";
@@ -220,11 +297,21 @@ export default function DashboardPage() { // ページコンポーネント（�
       setMembership(null);
       setBranch(null);
       setDepartmentNames([]);
+      setDepartments([]);
+      setBranchUsers([]);
       setLoading(false);
       return;
     }
 
     setMembership(membershipData);
+
+    const [nextDepartments, nextBranchUsers] = await Promise.all([
+      fetchDepartments(supabase, membershipData.branch_id),
+      fetchBranchUsers(supabase, membershipData.branch_id),
+    ]);
+
+    setDepartments(nextDepartments);
+    setBranchUsers(nextBranchUsers as BranchUser[]);
 
     // 2-1) 所属支部
     const { data: branchData, error: branchErr } = await supabase
@@ -280,8 +367,21 @@ export default function DashboardPage() { // ページコンポーネント（�
         task_id,
         status,
         tasks (
-          id, title, description, requester_id, scope_type, scope_id,
-          due_at, status, created_at, updated_at
+          id,
+          title,
+          description,
+          requester_id,
+          scope_type,
+          scope_id,
+          due_at,
+          status,
+          created_at,
+          updated_at,
+          project_id,
+          projects (
+            id,
+            name
+          )
         )
       `
       )
@@ -294,7 +394,7 @@ export default function DashboardPage() { // ページコンポーネント（�
       return;
     }
 
-    const rawRows = (data ?? []) as AssigneeRow[];
+    const rawRows = normalizeAssigneeRows((data ?? []) as any[]);
     const taskIds = rawRows.flatMap((r) => normalizeTasks(r.tasks).map((t) => t.id));
 
     let nextAssigneeProgressRows: {
@@ -325,7 +425,23 @@ export default function DashboardPage() { // ページコンポーネント（�
     // 4) 自分が依頼したタスク
     const { data: reqData, error: reqErr } = await supabase
       .from("tasks")
-      .select("id,title,description,requester_id,scope_type,scope_id,due_at,status,created_at,updated_at")
+      .select(`
+        id,
+        title,
+        description,
+        requester_id,
+        scope_type,
+        scope_id,
+        due_at,
+        status,
+        created_at,
+        updated_at,
+        project_id,
+        projects (
+          id,
+          name
+        )
+      `)
       .eq("requester_id", userData.user.id)
       .order("due_at", { ascending: true });
 
@@ -335,8 +451,8 @@ export default function DashboardPage() { // ページコンポーネント（�
       return;
     }
 
-    const requestedRows = (reqData ?? []) as TaskRow[];
-    const requestedTaskIds = requestedRows.map((t) => t.id);
+    const requestedTasks = (reqData ?? []).map(normalizeTaskRow);
+    const requestedTaskIds = requestedTasks.map((t) => t.id);
 
     let requestedAssigneeRows: {
       task_id: string;
@@ -367,7 +483,7 @@ export default function DashboardPage() { // ページコンポーネント（�
     setAssigneeProgressRows(nextAssigneeProgressRows);
 
     setRequestedTasks(
-      requestedRows.map((task) => {
+      requestedTasks.map((task) => {
         const assignees = requestedAssigneeRows
           .filter((a) => a.task_id === task.id)
           .map((a) => ({
@@ -436,6 +552,8 @@ export default function DashboardPage() { // ページコンポーネント（�
     setMembership(null);
     setBranch(null);
     setDepartmentNames([]);
+    setDepartments([]);
+    setBranchUsers([]);
     router.replace("/login");
   };
   
@@ -472,6 +590,13 @@ export default function DashboardPage() { // ページコンポーネント（�
                 href="/tasks"
               >
                 支部のタスク一覧
+              </Link>
+
+              <Link
+                className="inline-block w-fit rounded-md border px-3 py-2"
+                href="/calendar?mode=personal"
+              >
+                カレンダーへ
               </Link>
             </div>
           </div>
@@ -517,15 +642,34 @@ export default function DashboardPage() { // ページコンポーネント（�
                   className={`rounded-xl border p-4 ${dueCardBorderClass(due.tone)}`}
                 >
                   <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1 flex flex-col self-stretch">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
                         <Link
                           href={`/tasks/${t.id}`}
-                          className="truncate text-lg font-semibold underline"
+                          className="min-w-0 truncate text-lg font-semibold underline"
                           title={t.title}
                         >
                           {t.title}
                         </Link>
+
+                        <span className="shrink-0 rounded border px-2 py-0.5 text-xs text-gray-600">
+                          {buildScopeBadgeLabel({
+                            scopeType: t.scope_type,
+                            scopeName:
+                              t.scope_type === "department"
+                                ? deptNameById.get(t.scope_id) ?? "-"
+                                : "",
+                          })}
+                        </span>
+
+                        {t.projects && (
+                          <Link
+                            href={`/projects/${t.projects.id}`}
+                            className="inline-flex shrink-0 items-center rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
+                          >
+                            {t.projects.name}
+                          </Link>
+                        )}
 
                         <span
                           className={`shrink-0 px-2 py-1 rounded border text-xs ${dueBadgeClass(
@@ -536,7 +680,7 @@ export default function DashboardPage() { // ページコンポーネント（�
                         </span>
 
                         {due.remainingLabel && (
-                          <span className="text-sm font-medium font-semibold text-orange-700">
+                          <span className="shrink-0 text-sm font-medium font-semibold text-orange-700">
                             {due.remainingLabel}
                           </span>
                         )}
@@ -547,6 +691,10 @@ export default function DashboardPage() { // ページコンポーネント（�
                           {t.description}
                         </p>
                       )}
+
+                      <div className="mt-auto pt-2 text-xs text-gray-600">
+                        依頼者: {requesterNameById.get(t.requester_id) ?? "-"}
+                      </div>
                     </div>
 
                     <div className="text-right text-sm shrink-0">
@@ -622,14 +770,33 @@ export default function DashboardPage() { // ページコンポーネント（�
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-3">
+                      <div className="flex min-w-0 items-center gap-2">
                         <Link
                           href={`/tasks/${t.id}`}
-                          className="truncate text-lg font-semibold underline"
+                          className="min-w-0 truncate text-lg font-semibold underline"
                           title={t.title}
                         >
                           {t.title}
                         </Link>
+
+                        <span className="shrink-0 rounded border px-2 py-0.5 text-xs text-gray-600">
+                          {buildScopeBadgeLabel({
+                            scopeType: t.scope_type,
+                            scopeName:
+                              t.scope_type === "department"
+                                ? deptNameById.get(t.scope_id) ?? "-"
+                                : "",
+                          })}
+                        </span>
+
+                        {t.projects && (
+                          <Link
+                            href={`/projects/${t.projects.id}`}
+                            className="inline-flex items-center rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
+                          >
+                            {t.projects.name}
+                          </Link>
+                        )}
 
                         <span
                           className={`shrink-0 px-2 py-0.5 rounded border text-xs ${dueBadgeClass(
@@ -640,7 +807,7 @@ export default function DashboardPage() { // ページコンポーネント（�
                         </span>
 
                         {due.remainingLabel && (
-                          <span className="text-sm font-medium font-semibold text-orange-700">
+                          <span className="shrink-0 text-sm font-medium font-semibold text-orange-700">
                             {due.remainingLabel}
                           </span>
                         )}

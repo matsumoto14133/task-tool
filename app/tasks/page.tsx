@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabase/client";
 import { getDueMeta, dueBadgeClass, dueCardBorderClass, formatDue } from "@/lib/taskDue";
 import { sortTaskListItems, type TaskListSortKey } from "@/lib/taskSort";
 import {
+  buildUserDisplayLabel,
+  buildScopeBadgeLabel,
   buildTaskListItems,
   buildTaskProgressMap,
   type ScopeType,
@@ -72,10 +74,6 @@ function branchNameOf(m: Membership | null) {
   return b?.name ?? "-";
 }
 
-function scopeTypeLabel(t: ScopeType) {
-  return t === "branch" ? "支部" : t === "department" ? "部署" : "個人";
-}
-
 async function loadTasksPageData(params: {
   supabase: typeof supabase;
   userId: string;
@@ -131,10 +129,13 @@ export default function TasksPage() {
   const [showDone, setShowDone] = useState(false);
   const [sortKey, setSortKey] = useState<TaskListSortKey>("requested_desc");
 
-  // 追加要件：管轄/担当者フィルタ
-  const [scopeTypeFilter, setScopeTypeFilter] = useState<"" | ScopeType>("");
-  const [scopeIdFilter, setScopeIdFilter] = useState<string>(""); // 部署ID or 個人user_id（支部はbranch_id固定）
+  // フィルタ
+  const [scopeFilter, setScopeFilter] = useState<string>(""); // "" | "branch" | "personal" | `department:${id}`
+  const [requesterFilter, setRequesterFilter] = useState<string>(""); // user_id
   const [assigneeFilter, setAssigneeFilter] = useState<string>(""); // user_id
+
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     (async () => {
@@ -172,6 +173,10 @@ export default function TasksPage() {
     })();
   }, [router]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [q, showDone, sortKey, scopeFilter, requesterFilter, assigneeFilter]);
+
   const deptNameById = useMemo(() => {
     const m = new Map<string, string>();
     for (const d of departments) m.set(d.id, d.name);
@@ -181,7 +186,10 @@ export default function TasksPage() {
   const userNameById = useMemo(() => {
     const m = new Map<string, string>();
     for (const u of branchUsers) {
-      const label = u.display_name ? `${u.display_name}（${u.email}）` : u.email;
+      const label = buildUserDisplayLabel({
+        displayName: u.display_name,
+        email: u.email,
+      });
       m.set(u.user_id, label);
     }
     return m;
@@ -216,23 +224,19 @@ export default function TasksPage() {
     [tasks, taskProgressById, branchName, deptNameById, requesterNameById, userNameById]
   );
 
-  // 管轄フィルタの選択肢（scope_type に応じて scope_id 候補を出す）
-  const scopeIdOptions = useMemo(() => {
-    if (!membership) return [];
-    if (scopeTypeFilter === "branch") {
-      return [{ id: membership.branch_id, label: branchName }];
+  const requesterOptions = useMemo(() => {
+    const m = new Map<string, string>();
+
+    for (const t of taskListItems) {
+      if (!t.requesterId) continue;
+      m.set(t.requesterId, t.requesterName);
     }
-    if (scopeTypeFilter === "department") {
-      return departments.map((d) => ({ id: d.id, label: d.name }));
-    }
-    if (scopeTypeFilter === "personal") {
-      return branchUsers.map((u) => ({
-        id: u.user_id,
-        label: u.display_name ? `${u.display_name}（${u.email}）` : u.email,
-      }));
-    }
-    return [];
-  }, [scopeTypeFilter, membership, departments, branchUsers, branchName]);
+
+    return Array.from(m.entries()).map(([id, label]) => ({
+      id,
+      label,
+    }));
+  }, [taskListItems]);
 
   const filtered = useMemo(() => {
     let list = [...taskListItems];
@@ -251,13 +255,26 @@ export default function TasksPage() {
       list = list.filter((t) => (t.title ?? "").toLowerCase().includes(needle));
     }
 
-    // 管轄（scope_type）
-    if (scopeTypeFilter) list = list.filter((t) => t.scopeType === scopeTypeFilter);
+    // 管轄
+    if (scopeFilter) {
+      if (scopeFilter === "branch") {
+        list = list.filter((t) => t.scopeType === "branch");
+      } else if (scopeFilter === "personal") {
+        list = list.filter((t) => t.scopeType === "personal");
+      } else if (scopeFilter.startsWith("department:")) {
+        const departmentId = scopeFilter.replace("department:", "");
+        list = list.filter(
+          (t) => t.scopeType === "department" && t.scopeId === departmentId
+        );
+      }
+    }
 
-    // 管轄（scope_id）
-    if (scopeIdFilter) list = list.filter((t) => t.scopeId === scopeIdFilter);
+    // 依頼者
+    if (requesterFilter) {
+      list = list.filter((t) => t.requesterId === requesterFilter);
+    }
 
-    // 担当者（task_assignees）
+    // 担当者
     if (assigneeFilter) {
       list = list.filter((t) => t.assigneeUserIds.includes(assigneeFilter));
     }
@@ -271,30 +288,37 @@ export default function TasksPage() {
     q,
     showDone,
     sortKey,
-    scopeTypeFilter,
-    scopeIdFilter,
+    scopeFilter,
+    requesterFilter,
     assigneeFilter,
   ]);
 
-  // scopeTypeFilter を変えたら scopeIdFilter をリセット（ズレ防止）
-  useEffect(() => {
-    setScopeIdFilter("");
-  }, [scopeTypeFilter]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
 
-  const isManager = membership?.role === "manager" || membership?.role === "admin";
+  const pagedTasks = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    const end = start + PAGE_SIZE;
+    return filtered.slice(start, end);
+  }, [filtered, page]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   return (
     <main className="p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">タスク一覧（支部俯瞰）</h1>
-          <p className="mt-1 text-sm text-gray-600">
-            所属: {branchName} / {membership ? roleLabel(membership.role) : "-"}
-          </p>
+          <h1 className="text-2xl font-bold">タスク一覧（{branchName}）</h1>
 
           <div className="mt-3 flex items-center gap-2">
             <Link className="rounded-md border px-3 py-2" href="/dashboard">
-              個人ホームへ
+              ホームへ
+            </Link>
+            <Link className="rounded-md border px-3 py-2" href="/calendar?mode=all">
+              カレンダーへ
             </Link>
             <Link className="rounded-md border px-3 py-2" href="/tasks/new">
               タスクを依頼
@@ -304,86 +328,93 @@ export default function TasksPage() {
       </div>
 
       <section className="mt-8">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[240px]">
-            <label className="block text-xs text-gray-500">検索（タイトル）</label>
-            <input
-              className="mt-1 w-full rounded-md border px-3 py-2"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="例）確認、会議、資料…"
-            />
+        <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[240px]">
+              <label className="block text-xs text-gray-500">検索（タイトル）</label>
+              <input
+                className="mt-1 w-full rounded-md border px-3 py-2"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="例）確認、会議、資料…"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-500">表示</label>
+              <label className="mt-2 flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} />
+                完了も表示
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-500">並び替え</label>
+              <select
+                className="mt-1 rounded-md border px-2 py-2 text-sm"
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as TaskListSortKey)}
+              >
+                <option value="requested_desc">依頼日（新しい順）</option>
+                <option value="due_asc">期限（近い順）</option>
+                <option value="progress_desc">進捗（未完了優先）</option>
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-xs text-gray-500">表示</label>
-            <label className="mt-2 flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} />
-              完了も表示
-            </label>
-          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            {/* 管轄フィルタ */}
+            <div>
+              <label className="block text-xs text-gray-500">管轄フィルタ</label>
+              <select
+                className="mt-1 rounded-md border px-2 py-2 text-sm"
+                value={scopeFilter}
+                onChange={(e) => setScopeFilter(e.target.value)}
+              >
+                <option value="">指定なし</option>
+                <option value="branch">支部</option>
+                <option value="personal">個人</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={`department:${d.id}`}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <div>
-            <label className="block text-xs text-gray-500">並び替え</label>
-            <select
-              className="mt-1 rounded-md border px-2 py-2 text-sm"
-              value={sortKey}
-              onChange={(e) => setSortKey(e.target.value as TaskListSortKey)}
-            >
-              <option value="requested_desc">依頼日（新しい順）</option>
-              <option value="due_asc">期限（近い順）</option>
-              <option value="progress_desc">進捗（未完了優先）</option>
-            </select>
-          </div>
+            {/* 依頼者フィルタ */}
+            <div>
+              <label className="block text-xs text-gray-500">依頼者フィルタ</label>
+              <select
+                className="mt-1 rounded-md border px-2 py-2 text-sm"
+                value={requesterFilter}
+                onChange={(e) => setRequesterFilter(e.target.value)}
+              >
+                <option value="">指定なし</option>
+                {requesterOptions.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {/* 管轄フィルタ */}
-          <div>
-            <label className="block text-xs text-gray-500">管轄タイプ</label>
-            <select
-              className="mt-1 rounded-md border px-2 py-2 text-sm"
-              value={scopeTypeFilter}
-              onChange={(e) => setScopeTypeFilter(e.target.value as any)}
-            >
-              <option value="">すべて</option>
-              <option value="branch">支部</option>
-              <option value="department">部署</option>
-              <option value="personal">個人</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-500">管轄（名前）</label>
-            <select
-              className="mt-1 rounded-md border px-2 py-2 text-sm"
-              value={scopeIdFilter}
-              onChange={(e) => setScopeIdFilter(e.target.value)}
-              disabled={!scopeTypeFilter}
-              title={!scopeTypeFilter ? "先に管轄タイプを選択してください" : ""}
-            >
-              <option value="">すべて</option>
-              {scopeIdOptions.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* 担当者フィルタ */}
-          <div>
-            <label className="block text-xs text-gray-500">担当者</label>
-            <select
-              className="mt-1 rounded-md border px-2 py-2 text-sm"
-              value={assigneeFilter}
-              onChange={(e) => setAssigneeFilter(e.target.value)}
-            >
-              <option value="">全員</option>
-              {branchUsers.map((u) => (
-                <option key={u.user_id} value={u.user_id}>
-                  {u.display_name ? `${u.display_name}（${u.email}）` : u.email}
-                </option>
-              ))}
-            </select>
+            {/* 担当者フィルタ */}
+            <div>
+              <label className="block text-xs text-gray-500">担当者フィルタ</label>
+              <select
+                className="mt-1 rounded-md border px-2 py-2 text-sm"
+                value={assigneeFilter}
+                onChange={(e) => setAssigneeFilter(e.target.value)}
+              >
+                <option value="">指定なし</option>
+                {branchUsers.map((u) => (
+                  <option key={u.user_id} value={u.user_id}>
+                    {u.display_name ? `${u.display_name}（${u.email}）` : u.email}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -395,30 +426,47 @@ export default function TasksPage() {
         )}
 
         {!loading && !errorMsg && filtered.length > 0 && (
-          <ul className="mt-4 space-y-3">
-            {filtered.map((t) => {
-              const due = getDueMeta(t.dueAt, { isCompleted: t.progress.isCompleted });
+          <>
+            <div className="mt-4 text-sm text-gray-600">
+              {filtered.length}件中 {Math.min((page - 1) * PAGE_SIZE + 1, filtered.length)}-
+              {Math.min(page * PAGE_SIZE, filtered.length)}件を表示
+            </div>
 
-              return (
-                <li
-                  key={t.id}
-                  className={`rounded-xl border p-4 ${dueCardBorderClass(due.tone)}`}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex items-center justify-between gap-3">
-                        <Link
-                          href={`/tasks/${t.id}`}
-                          className="truncate text-lg font-semibold underline"
-                          title={t.title}
-                        >
-                          {t.title}
-                        </Link>
+            <ul className="mt-4 space-y-3">
+              {pagedTasks.map((t) => {
+                const due = getDueMeta(t.dueAt, { isCompleted: t.progress.isCompleted });
 
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="rounded border px-2 py-0.5 text-xs text-gray-600">
-                            {scopeTypeLabel(t.scopeType)}: {t.scopeName}
+                return (
+                  <li
+                    key={t.id}
+                    className={`rounded-xl border p-4 ${dueCardBorderClass(due.tone)}`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Link
+                            href={`/tasks/${t.id}`}
+                            className="min-w-0 truncate text-lg font-semibold underline"
+                            title={t.title}
+                          >
+                            {t.title}
+                          </Link>
+
+                          <span className="shrink-0 rounded border px-2 py-0.5 text-xs text-gray-600">
+                            {buildScopeBadgeLabel({
+                              scopeType: t.scopeType,
+                              scopeName: t.scopeName,
+                            })}
                           </span>
+
+                          {t.projectId && t.projectName && (
+                            <Link
+                              href={`/projects/${t.projectId}`}
+                              className="inline-flex px-2 py-0.5 rounded border border-blue-200 bg-blue-50 text-xs text-blue-700"
+                            >
+                              {t.projectName}
+                            </Link>
+                          )}
 
                           <span
                             className={`shrink-0 px-2 py-1 rounded border text-xs ${dueBadgeClass(
@@ -429,42 +477,72 @@ export default function TasksPage() {
                           </span>
 
                           {due.remainingLabel && (
-                            <span className="text-sm font-medium font-semibold text-orange-700">
+                            <span className="shrink-0 text-sm font-medium font-semibold text-orange-700">
                               {due.remainingLabel}
                             </span>
                           )}
                         </div>
+
+                        {t.description && (
+                          <p className="mt-1 text-sm text-gray-600 whitespace-pre-wrap">
+                            {t.description}
+                          </p>
+                        )}
+
+                        <div className="mt-2 text-xs text-gray-600">
+                          依頼者: {t.requesterName}
+                        </div>
+
+                        <div className="mt-1 text-xs text-gray-600">
+                          担当: {t.assigneePreview}
+                        </div>
                       </div>
 
-                      {t.description && (
-                        <p className="mt-1 text-sm text-gray-600 whitespace-pre-wrap">
-                          {t.description}
-                        </p>
-                      )}
+                      <div className="text-right text-sm shrink-0">
+                        <div className="mt-2 text-gray-600">
+                          全体進捗: {t.progress.doneCount} / {t.progress.assigneeCount}
+                        </div>
 
-                      <div className="mt-2 text-xs text-gray-600">
-                        担当: {t.assigneePreview}
+                        <div className="mt-1 text-gray-600">
+                          依頼日時：{formatDue(t.createdAt)}
+                        </div>
+
+                        <div className="mt-1 text-base font-semibold text-gray-900">
+                          期限：{formatDue(t.dueAt)}
+                        </div>
                       </div>
                     </div>
+                  </li>
+                );
+              })}
+            </ul>
 
-                    <div className="text-right text-sm shrink-0">
-                      <div className="mt-2 text-gray-600">
-                        全体進捗: {t.progress.doneCount} / {t.progress.assigneeCount}
-                      </div>
+            <div className="mt-4 flex items-center justify-between">
+              <div className="text-sm text-gray-500">
+                {page} / {totalPages} ページ
+              </div>
 
-                      <div className="mt-1 text-gray-600">
-                        依頼日時：{formatDue(t.createdAt)}
-                      </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                  disabled={page === 1}
+                >
+                  前へ
+                </button>
 
-                      <div className="mt-1 text-base font-semibold text-gray-900">
-                        期限：{formatDue(t.dueAt)}
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+                <button
+                  type="button"
+                  className="rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={page === totalPages}
+                >
+                  次へ
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </section>
     </main>

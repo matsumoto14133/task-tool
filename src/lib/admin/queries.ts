@@ -44,3 +44,11 @@ export async function fetchProfileByEmail(targetEmail: string) {
     .eq("email", targetEmail)
     .limit(1);
 }
+
+export async function fetchMembershipsByUserId(userId: string) {
+  return await supabase
+    .from("memberships")
+    .select("user_id, branch_id, role")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+}
