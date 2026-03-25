@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
+const supabase = createClient();
 import { fetchMyMembership } from "@/lib/tasks/taskQueries";
 
 type Membership = {
@@ -331,9 +332,9 @@ export default function ProjectEditPage() {
   }
 
   return (
-    <main className="p-6">
+    <main className="p-4 sm:p-6">
       <div className="max-w-2xl">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold">プロジェクト編集</h1>
             <p className="mt-1 text-sm text-gray-600">
@@ -341,10 +342,10 @@ export default function ProjectEditPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
             <button
               type="button"
-              className="rounded-md border px-3 py-2"
+              className="w-full rounded-md border px-3 py-2 text-center sm:w-auto"
               onClick={onBack}
             >
               プロジェクト詳細へ戻る
@@ -356,7 +357,7 @@ export default function ProjectEditPage() {
         {errorMsg && <p className="mt-6 text-sm text-red-600">❌ {errorMsg}</p>}
 
         {!loading && (
-          <form className="mt-6 space-y-6" onSubmit={onSave}>
+          <form className="mt-6 space-y-6 sm:space-y-7" onSubmit={onSave}>
             <div>
               <label className="block text-sm font-medium">プロジェクト名</label>
               <input
@@ -368,11 +369,11 @@ export default function ProjectEditPage() {
             </div>
 
             <div className="rounded-xl border p-4">
-              <div className="font-semibold mb-2">スケジュール</div>
+              <div className="mb-2 font-semibold">スケジュール</div>
 
               <div className="space-y-3">
                 {schedules.map((item, index) => (
-                  <div key={item.id} className="rounded-lg border p-3 space-y-2">
+                  <div key={item.id} className="space-y-2 rounded-lg border p-3 sm:p-4">
                     <div>
                       <label className="block text-xs text-gray-600">
                         イベント名
@@ -401,10 +402,10 @@ export default function ProjectEditPage() {
 
                     <button
                       type="button"
-                      className="text-sm text-red-600"
+                      className="text-left text-sm text-red-600 underline-offset-2 hover:underline"
                       onClick={() => removeScheduleRow(index)}
                     >
-                      この行を削除
+                      このスケジュールを削除
                     </button>
                   </div>
                 ))}
@@ -412,7 +413,7 @@ export default function ProjectEditPage() {
 
               <button
                 type="button"
-                className="mt-3 rounded-md border px-3 py-2 text-sm"
+                className="mt-3 w-full rounded-md border px-3 py-2 text-sm sm:w-auto"
                 onClick={addScheduleRow}
               >
                 ＋ スケジュールを追加
@@ -422,7 +423,7 @@ export default function ProjectEditPage() {
             <div>
               <label className="block text-sm font-medium">説明</label>
               <textarea
-                className="mt-1 w-full rounded-md border px-3 py-2"
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
@@ -445,7 +446,7 @@ export default function ProjectEditPage() {
             </div>
 
             <button
-              className="rounded-md border px-4 py-2 font-medium disabled:opacity-50"
+              className="w-full rounded-md border px-4 py-2 font-medium disabled:opacity-50 sm:w-auto"
               type="submit"
               disabled={saving}
             >
@@ -456,7 +457,7 @@ export default function ProjectEditPage() {
               <div className="font-semibold text-red-700 mb-2">危険な操作</div>
 
               <button
-                className="rounded-md border border-red-500 text-red-700 px-4 py-2"
+                className="w-full rounded-md border border-red-500 px-4 py-2 text-red-700 sm:w-auto"
                 onClick={deleteProject}
                 disabled={saving}
               >

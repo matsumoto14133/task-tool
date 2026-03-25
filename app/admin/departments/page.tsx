@@ -144,15 +144,23 @@ export default function AdminDepartmentsPage() {
   };
 
   return (
-    <main className="p-6">
-      <div className="flex items-start justify-between gap-4">
+    <main className="p-4 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">部署管理（管理者のみアクセス可能）</h1>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Link className="rounded-md border px-3 py-2" href="/dashboard">
+          <h1 className="text-2xl font-bold leading-snug">
+            部署管理（管理者のみアクセス可能）
+          </h1>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <Link
+              className="w-full rounded-md border px-3 py-2 text-center sm:w-auto"
+              href="/dashboard"
+            >
               ホームへ
             </Link>
-            <Link className="rounded-md border px-3 py-2" href="/admin/memberships">
+            <Link
+              className="w-full rounded-md border px-3 py-2 text-center sm:w-auto"
+              href="/admin/memberships"
+            >
               ユーザー管理へ
             </Link>
           </div>
@@ -180,7 +188,7 @@ export default function AdminDepartmentsPage() {
 
               <button
                 type="submit"
-                className="rounded-md border px-3 py-2 disabled:opacity-50"
+                className="w-full rounded-md border px-3 py-2 text-center disabled:opacity-50 sm:w-auto"
                 disabled={creating}
               >
                 {creating ? "作成中..." : "部署を作成"}
@@ -197,7 +205,7 @@ export default function AdminDepartmentsPage() {
                   上のフォームから作成してください。
               </p>
             ) : (
-              <ul className="mt-4 space-y-3">
+              <ul className="mt-4 space-y-4">
                 {departments.map((department) => {
                   const memberCount = countMembersInDepartment(
                     department.id,
@@ -213,7 +221,7 @@ export default function AdminDepartmentsPage() {
                       key={department.id}
                       className="rounded-lg border bg-white p-4"
                     >
-                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                             <input
@@ -230,7 +238,7 @@ export default function AdminDepartmentsPage() {
 
                             <button
                               type="button"
-                              className="rounded-md border px-2 py-1 text-xs disabled:opacity-50"
+                              className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50 sm:w-auto sm:px-2 sm:py-1 sm:text-xs"
                               onClick={() => onRenameDepartment(department.id)}
                               disabled={
                                 updatingDepartmentId === department.id ||
@@ -247,14 +255,14 @@ export default function AdminDepartmentsPage() {
                           </div>
                         </div>
 
-                        <div className="flex shrink-0 flex-col items-start gap-2 text-sm md:items-end">
-                          <span className="rounded-md border px-2 py-1">
+                        <div className="flex flex-col items-start gap-2 text-sm md:items-end">
+                          <span className="inline-flex rounded-md border px-2 py-1">
                             所属人数: {memberCount}人
                           </span>
 
                           <button
                             type="button"
-                            className="rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+                            className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50 sm:w-auto"
                             onClick={() => onDeleteDepartment(department.id)}
                             disabled={deletingDepartmentId === department.id || !deletable}
                           >
@@ -262,7 +270,7 @@ export default function AdminDepartmentsPage() {
                           </button>
 
                           {!deletable && (
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-gray-500 leading-relaxed">
                               所属メンバーがいるため削除できません
                             </p>
                           )}

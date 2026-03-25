@@ -335,15 +335,21 @@ export default function AdminMembershipsPage() {
   };
 
   return (
-    <main className="p-6">
-      <div className="flex items-start justify-between gap-4">
+    <main className="p-4 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">ユーザー管理</h1>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Link className="rounded-md border px-3 py-2" href="/dashboard">
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <Link
+              className="w-full rounded-md border px-3 py-2 text-center sm:w-auto"
+              href="/dashboard"
+            >
               ホームへ
             </Link>
-            <Link className="rounded-md border px-3 py-2" href="/admin/departments">
+            <Link
+              className="w-full rounded-md border px-3 py-2 text-center sm:w-auto"
+              href="/admin/departments"
+            >
               部署管理へ
             </Link>
           </div>
@@ -382,7 +388,7 @@ export default function AdminMembershipsPage() {
                 </div>
 
                 <button
-                  className="rounded-md border px-3 py-2 disabled:opacity-50"
+                  className="w-full rounded-md border px-3 py-2 text-center disabled:opacity-50 sm:w-auto"
                   disabled={saving}
                 >
                   {saving
@@ -414,7 +420,7 @@ export default function AdminMembershipsPage() {
                   return (
                     <li
                       key={`${r.branch_id}-${r.user_id}`}
-                      className={`rounded-lg border p-3 text-sm ${
+                      className={`rounded-lg border p-4 text-sm ${
                         isSelfMembership(myMembership?.user_id, r.user_id)
                           ? "bg-gray-80 border-2"
                           : "bg-white"
@@ -442,7 +448,7 @@ export default function AdminMembershipsPage() {
                                 />
                                 <button
                                   type="button"
-                                  className="rounded-md border px-2 py-1 text-xs disabled:opacity-50"
+                                  className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50 sm:w-auto sm:px-2 sm:py-1 sm:text-xs"
                                   onClick={() => onUpdateDisplayName(r.user_id)}
                                   disabled={
                                     updatingNameUserId === r.user_id ||
@@ -499,7 +505,7 @@ export default function AdminMembershipsPage() {
                           {canEditDepartments(myMembership?.role) && (
                             <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
                               <select
-                                className="rounded-md border px-3 py-2 text-sm"
+                                className="w-full rounded-md border px-3 py-2 text-sm"
                                 value={selectedDepartmentIds[r.user_id] ?? ""}
                                 onChange={(e) =>
                                   setSelectedDepartmentIds((prev) => ({
@@ -519,7 +525,7 @@ export default function AdminMembershipsPage() {
 
                               <button
                                 type="button"
-                                className="rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+                                className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50 sm:w-auto"
                                 onClick={() => onAddDepartmentToUser(r.user_id)}
                                 disabled={
                                   updatingDepartmentUserId === r.user_id ||
@@ -533,12 +539,12 @@ export default function AdminMembershipsPage() {
                           )}
                         </div>
 
-                        <div className="flex flex-col gap-2 md:items-end">
-                          <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <div className="flex flex-col gap-2">
+                          <div className="flex flex-col gap-2 text-sm sm:flex-row sm:flex-wrap sm:items-center">
                             {canEditRole(myMembership?.role) ? (
                               <>
                                 <select
-                                  className="rounded-md border px-2 py-1"
+                                  className="w-full rounded-md border px-3 py-2 sm:w-auto sm:px-2 sm:py-1"
                                   value={editingRoles[r.user_id] ?? r.role}
                                   onChange={(e) =>
                                     setEditingRoles((prev) => ({
@@ -555,7 +561,7 @@ export default function AdminMembershipsPage() {
 
                                 <button
                                   type="button"
-                                  className="rounded-md border px-3 py-1 disabled:opacity-50"
+                                  className="w-full rounded-md border px-3 py-2 disabled:opacity-50 sm:w-auto sm:py-1"
                                   onClick={() => onUpdateRole(r.user_id)}
                                   disabled={
                                     updatingUserId === r.user_id ||

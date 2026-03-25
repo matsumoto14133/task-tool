@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
+const supabase = createClient();
 import { getDueMeta, dueBadgeClass, formatDue } from "@/lib/taskDue";
 import { buildScopeBadgeLabel } from "@/lib/tasks/taskList";
 import { fetchDepartments, type Dept } from "@/lib/tasks/taskQueries";
@@ -783,17 +784,17 @@ export default function TaskEditPage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl">
-      <div className="flex items-center justify-between gap-3 mb-6">
+    <div className="max-w-3xl p-4 sm:p-6">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">タスク編集</h1>
-          <div className="text-sm text-gray-500">task_id: {task.id}</div>
+          <div className="break-all text-sm text-gray-500">task_id: {task.id}</div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto">
           <Link
             href={`/tasks/${task.id}`}
-            className="px-4 py-2 border rounded-md"
+            className="w-full rounded-md border px-4 py-2 text-center sm:w-auto"
           >
             タスク詳細へ戻る
           </Link>
@@ -810,7 +811,7 @@ export default function TaskEditPage() {
         <div className="text-xl font-semibold mb-1">{task.title}</div>
 
         <div className="mt-2 space-y-2 text-sm">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-start gap-3">
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-gray-900">
                 期限: {formatDue(task.due_at)}
@@ -838,7 +839,7 @@ export default function TaskEditPage() {
             {task.projects && (
               <Link
                 href={`/projects/${task.projects.id}`}
-                className="inline-flex items-center px-2 py-0.5 rounded border border-blue-200 bg-blue-50 text-xs text-blue-700"
+                className="inline-flex max-w-full items-center rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs text-blue-700 whitespace-normal break-words"
               >
                 {task.projects.name}
               </Link>
@@ -864,7 +865,7 @@ export default function TaskEditPage() {
           placeholder="目的、実施手順など"
         />
         <button
-          className="mt-2 rounded-md border px-3 py-2"
+          className="mt-2 w-full rounded-md border px-3 py-2 sm:w-auto"
           onClick={updateDescription}
           disabled={saving}
         >
@@ -876,13 +877,13 @@ export default function TaskEditPage() {
         <div className="font-semibold mb-2">期限を編集</div>
         <input
           type="datetime-local"
-          className="rounded-md border px-3 py-2 text-sm"
+          className="w-full rounded-md border px-3 py-2 text-sm sm:w-auto"
           value={dueDraft}
           onChange={(e) => setDueDraft(e.target.value)}
         />
         <div className="mt-2">
           <button
-            className="rounded-md border px-3 py-2 text-sm"
+            className="w-full rounded-md border px-3 py-2 text-sm sm:w-auto"
             onClick={saveDue}
             disabled={saving}
           >
@@ -898,7 +899,7 @@ export default function TaskEditPage() {
           <div>
             <label className="block text-xs text-gray-500 mb-1">管轄</label>
             <select
-              className="rounded-md border px-3 py-2 text-sm"
+              className="w-full rounded-md border px-3 py-2 text-sm sm:w-auto"
               value={scopeTypeDraft}
               onChange={(e) => {
                 const nextType = e.target.value as ScopeType;
@@ -917,7 +918,7 @@ export default function TaskEditPage() {
             <div>
               <label className="block text-xs text-gray-500 mb-1">部署</label>
               <select
-                className="rounded-md border px-3 py-2 text-sm"
+                className="w-full rounded-md border px-3 py-2 text-sm"
                 value={scopeIdDraft}
                 onChange={(e) => setScopeIdDraft(e.target.value)}
               >
@@ -935,7 +936,7 @@ export default function TaskEditPage() {
             <div>
               <label className="block text-xs text-gray-500 mb-1">対象者</label>
               <select
-                className="rounded-md border px-3 py-2 text-sm"
+                className="w-full rounded-md border px-3 py-2 text-sm"
                 value={scopeIdDraft}
                 onChange={(e) => setScopeIdDraft(e.target.value)}
               >
@@ -951,7 +952,7 @@ export default function TaskEditPage() {
 
           <div>
             <button
-              className="rounded-md border px-3 py-2 text-sm"
+              className="w-full rounded-md border px-3 py-2 text-sm sm:w-auto"
               onClick={saveScope}
               disabled={saving}
             >
@@ -978,7 +979,7 @@ export default function TaskEditPage() {
         </select>
 
         <button
-          className="mt-3 rounded-md border px-3 py-2 text-sm"
+          className="mt-3 w-full rounded-md border px-3 py-2 text-sm sm:w-auto"
           onClick={saveProject}
           disabled={saving}
         >
@@ -1002,7 +1003,7 @@ export default function TaskEditPage() {
 
         <div className="mt-2">
           <button
-            className="rounded-md border px-3 py-2 text-sm"
+            className="w-full rounded-md border px-3 py-2 text-sm sm:w-auto"
             onClick={saveAttachmentUrl}
             disabled={saving}
           >
@@ -1024,9 +1025,10 @@ export default function TaskEditPage() {
 
         <div className="mt-2 space-y-2">
           <div className="mb-3 flex flex-col gap-2">
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-start gap-2 text-sm">
               <input
                 type="checkbox"
+                className="mt-1"
                 checked={assignAllBranch}
                 onChange={(e) => toggleAssignAllBranch(e.target.checked)}
                 disabled={profiles.length === 0}
@@ -1035,7 +1037,7 @@ export default function TaskEditPage() {
             </label>
 
             <label
-              className={`flex items-center gap-2 text-sm ${
+              className={`flex items-start gap-2 text-sm ${
                 scopeTypeDraft === "department" && scopeIdDraft
                   ? ""
                   : "text-gray-400"
@@ -1043,6 +1045,7 @@ export default function TaskEditPage() {
             >
               <input
                 type="checkbox"
+                className="mt-1"
                 checked={assignAllDepartment}
                 onChange={(e) => toggleAssignAllDepartment(e.target.checked)}
                 disabled={!(scopeTypeDraft === "department" && scopeIdDraft)}
@@ -1054,6 +1057,7 @@ export default function TaskEditPage() {
             <label key={p.user_id} className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
+                className="mt-1"
                 checked={assigneeIds.includes(p.user_id)}
                 onChange={() => toggleAssignee(p.user_id)}
               />
@@ -1063,7 +1067,7 @@ export default function TaskEditPage() {
         </div>
 
         <button
-          className="mt-3 rounded-md border px-3 py-2"
+          className="mt-3 w-full rounded-md border px-3 py-2 sm:w-auto"
           onClick={saveAssignees}
           disabled={saving}
         >
@@ -1072,14 +1076,14 @@ export default function TaskEditPage() {
       </div>
 
       <div className="border rounded-lg p-4 mt-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="font-semibold">担当者ごとの進捗・備考を編集</div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <div>
               <label className="block text-xs text-gray-500">並び替え</label>
               <select
-                className="mt-1 rounded-md border px-2 py-2 text-sm"
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm sm:w-auto"
                 value={assigneeSort}
                 onChange={(e) =>
                   setAssigneeSort(
@@ -1093,7 +1097,7 @@ export default function TaskEditPage() {
               </select>
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-gray-600 pt-5">
+            <label className="flex items-center gap-2 text-sm text-gray-600 sm:pt-5">
               <input
                 type="checkbox"
                 checked={hideDoneAssignees}
@@ -1120,8 +1124,8 @@ export default function TaskEditPage() {
                     isMe ? "border-2 border-orange-400" : "border border-gray-200"
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <div className="font-medium flex items-center gap-2">
+                  <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap items-center gap-2 font-medium">
                       {profileLabel(profile, userId)}
                       {isMe && (
                         <span className="text-xs px-2 py-0.5 rounded bg-orange-500 text-white">
@@ -1138,7 +1142,7 @@ export default function TaskEditPage() {
                   <div className="mb-3">
                     <div className="text-xs text-gray-500 mb-1">進捗</div>
                     <select
-                      className="rounded-md border px-3 py-2 text-sm"
+                      className="w-full rounded-md border px-3 py-2 text-sm sm:w-auto"
                       value={progress?.status ?? "todo"}
                       onChange={(e) =>
                         updateAssigneeStatus(
@@ -1175,7 +1179,7 @@ export default function TaskEditPage() {
         )}
 
         <button
-          className="mt-3 rounded-md border px-3 py-2"
+          className="mt-3 w-full rounded-md border px-3 py-2 sm:w-auto"
           onClick={saveAssigneeProgresses}
           disabled={saving}
         >
@@ -1187,7 +1191,7 @@ export default function TaskEditPage() {
         <div className="font-semibold text-red-700 mb-2">危険な操作</div>
 
         <button
-          className="rounded-md border border-red-500 text-red-700 px-4 py-2"
+          className="w-full rounded-md border border-red-500 px-4 py-2 text-red-700 sm:w-auto"
           onClick={deleteTask}
           disabled={saving}
         >

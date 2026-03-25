@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
+const supabase = createClient();
 import {
   getDueMeta,
   dueBadgeClass,
@@ -347,18 +348,18 @@ export default function ProjectDetailPage() {
   };
 
   return (
-    <main className="p-6">
+    <main className="p-4 sm:p-6">
       <div className="max-w-3xl">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold">プロジェクト詳細</h1>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
             {project && canEditProject && (
               <Link
                 href={`/projects/${project.id}/edit`}
-                className="rounded-md border px-3 py-2"
+                className="w-full rounded-md border px-3 py-2 text-center sm:w-auto"
               >
                 プロジェクトを編集する
               </Link>
@@ -366,7 +367,7 @@ export default function ProjectDetailPage() {
 
             <button
               type="button"
-              className="rounded-md border px-3 py-2"
+              className="w-full rounded-md border px-3 py-2 text-center sm:w-auto"
               onClick={onBack}
             >
               戻る
@@ -374,7 +375,7 @@ export default function ProjectDetailPage() {
 
             <Link
               href="/dashboard"
-              className="rounded-md border px-3 py-2"
+              className="w-full rounded-md border px-3 py-2 text-center sm:w-auto"
             >
               ホームへ
             </Link>
@@ -390,12 +391,12 @@ export default function ProjectDetailPage() {
               <div className="text-xl font-semibold mb-1">{project.name}</div>
 
               <div className="mt-2 space-y-2 text-sm">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-start gap-2">
                   <span className="text-gray-500">プロジェクト作成者:</span>
                   <span className="text-gray-700">{requesterName}</span>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-start gap-2">
                   <span className="text-gray-500">全体進捗:</span>
                   <div className="text-sm text-gray-700">
                     完了済 {progressSummary.completedCount}件・依頼中 {progressSummary.requestingCount}件・遅延中 {progressSummary.delayedCount}件
@@ -409,11 +410,11 @@ export default function ProjectDetailPage() {
             </div>
 
             <div className="border rounded-lg p-4 mb-4">
-              <div className="flex items-center justify-between mb-3">
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="mb2 font-semibold">スケジュール</h2>
                 <Link
                   href={`/calendar?mode=project&project=${project.id}`}
-                  className="rounded-md border px-3 py-2 text-sm"
+                  className="w-full rounded-md border px-3 py-2 text-center text-sm sm:w-auto"
                 >
                   カレンダーで見る
                 </Link>
@@ -428,7 +429,7 @@ export default function ProjectDetailPage() {
                       key={`${item.eventName}-${item.date}-${index}`}
                       className="border rounded-lg px-4 py-2"
                     >
-                      <span className="text-lg text-gray-900 leading-tight">
+                      <span className="break-words text-lg leading-tight text-gray-900">
                         {item.date}：
                         {item.eventName}
                       </span>
@@ -465,7 +466,7 @@ export default function ProjectDetailPage() {
             <section className="rounded-xl border p-4">
               <div className="text-lg font-semibold">このプロジェクトのタスク一覧</div>
 
-              <div className="mt-4 flex flex-wrap items-end gap-3">
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
                 <div>
                   <label className="block text-xs text-gray-500">表示</label>
                   <label className="mt-2 flex items-center gap-2 text-sm">
@@ -481,7 +482,7 @@ export default function ProjectDetailPage() {
                 <div>
                   <label className="block text-xs text-gray-500">並び替え</label>
                   <select
-                    className="mt-1 rounded-md border px-2 py-2 text-sm"
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-sm sm:w-auto"
                     value={sortKey}
                     onChange={(e) => setSortKey(e.target.value as TaskListSortKey)}
                   >
@@ -497,7 +498,7 @@ export default function ProjectDetailPage() {
                   このプロジェクトに紐づくタスクはありません。
                 </p>
               ) : (
-                <ul className="mt-4 space-y-3">
+                <ul className="mt-4 space-y-4">
                   {visibleTaskListItems.map((t) => {
                     const due = getDueMeta(t.dueAt, { isCompleted: t.progress.isCompleted });
 
@@ -506,12 +507,12 @@ export default function ProjectDetailPage() {
                         key={t.id}
                         className={`rounded-xl border p-4 ${dueCardBorderClass(due.tone)}`}
                       >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="min-w-0">
-                            <div className="flex min-w-0 items-center gap-2">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 flex-wrap items-start gap-2">
                               <Link
                                 href={`/tasks/${t.id}`}
-                                className="min-w-0 truncate text-lg font-semibold underline"
+                                className="min-w-0 break-words text-lg font-semibold underline"
                                 title={t.title}
                               >
                                 {t.title}
@@ -527,7 +528,7 @@ export default function ProjectDetailPage() {
                               {t.projectId && t.projectName && (
                                 <Link
                                   href={`/projects/${t.projectId}`}
-                                  className="inline-flex rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
+                                  className="inline-flex max-w-full rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs text-blue-700 whitespace-normal break-words"
                                 >
                                   {t.projectName}
                                 </Link>
@@ -549,21 +550,21 @@ export default function ProjectDetailPage() {
                             </div>
 
                             {t.description && (
-                              <p className="mt-1 whitespace-pre-wrap text-sm text-gray-600">
+                              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-gray-600">
                                 {t.description}
                               </p>
                             )}
 
-                            <div className="mt-2 text-xs text-gray-600">
+                            <div className="mt-2 break-words text-xs text-gray-600">
                               依頼者: {t.requesterName}
                             </div>
 
-                            <div className="mt-1 text-xs text-gray-600">
+                            <div className="mt-1 break-words text-xs text-gray-600">
                               担当: {t.assigneePreview}
                             </div>
                           </div>
 
-                          <div className="shrink-0 text-right text-sm">
+                          <div className="shrink-0 text-left text-sm sm:text-right">
                             <div className="mt-2 text-gray-600">
                               全体進捗: {t.progress.doneCount} / {t.progress.assigneeCount}
                             </div>
@@ -572,7 +573,7 @@ export default function ProjectDetailPage() {
                               依頼日時：{formatDue(t.createdAt)}
                             </div>
 
-                            <div className="mt-1 text-base font-semibold text-gray-900">
+                            <div className="mt-1 text-lg font-semibold text-gray-900">
                               期限：{formatDue(t.dueAt)}
                             </div>
                           </div>

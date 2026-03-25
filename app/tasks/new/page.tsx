@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
+const supabase = createClient();
 
 type ScopeType = "branch" | "department" | "personal";
 type TaskStatus = "todo" | "doing" | "done" | "hold";
@@ -541,19 +542,19 @@ export default function NewTaskPage() {
   };
 
   return (
-    <main className="p-6">
+    <main className="p-4 sm:p-6">
       <div className="max-w-2xl">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold">タスク作成</h1>
-            <p className="mt-1 text-sm text-gray-600">
+            <p className="mt-1 break-all text-sm text-gray-600">
               依頼者: {me?.email ?? "-"}
             </p>
           </div>
 
           <button
             type="button"
-            className="rounded-md border px-3 py-2"
+            className="w-full rounded-md border px-3 py-2 text-center sm:w-auto"
             onClick={onBack}
           >
             戻る
@@ -565,7 +566,7 @@ export default function NewTaskPage() {
       {errorMsg && <p className="mt-6 text-sm text-red-600">❌ {errorMsg}</p>}
 
       {!loading && (
-        <form className="mt-6 space-y-6 max-w-2xl" onSubmit={onCreate}>
+        <form className="mt-6 max-w-2xl space-y-6 sm:space-y-7" onSubmit={onCreate}>
           <div>
             <label className="block text-sm font-medium">タイトル</label>
             <input
@@ -615,7 +616,7 @@ export default function NewTaskPage() {
           <div className="rounded-xl border p-4">
             <div className="font-semibold mb-2">管轄</div>
 
-            <div className="flex items-center gap-6 text-sm">
+            <div className="flex flex-col gap-3 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
               <label className="flex items-center gap-2">
                 <input
                   type="radio"
@@ -685,9 +686,10 @@ export default function NewTaskPage() {
             <div className="font-semibold mb-2">担当者（複数選択可）</div>
 
             <div className="mb-3 flex flex-col gap-2">
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-start gap-2 text-sm">
                 <input
                   type="checkbox"
+                  className="mt-1"
                   checked={assignAllBranch}
                   onChange={(e) => onToggleAllBranch(e.target.checked)}
                   disabled={candidates.length === 0}
@@ -696,12 +698,13 @@ export default function NewTaskPage() {
               </label>
 
               <label
-                className={`flex items-center gap-2 text-sm ${
+                className={`flex items-start gap-2 text-sm ${
                   scopeType === "department" ? "" : "text-gray-400"
                 }`}
               >
                 <input
                   type="checkbox"
+                  className="mt-1"
                   checked={assignAllDept}
                   onChange={(e) => onToggleAllDepartment(e.target.checked)}
                   disabled={
@@ -724,11 +727,12 @@ export default function NewTaskPage() {
                 担当者候補がありません（memberships / profiles を確認してください）
               </p>
             ) : (
-              <div className="space-y-2 text-sm">
+              <div className="space-y-3 text-sm">
                 {candidates.map((p) => (
-                  <label key={p.user_id} className="flex items-center gap-2">
+                  <label key={p.user_id} className="flex items-start gap-2 break-words">
                     <input
                       type="checkbox"
+                      className="mt-1"
                       checked={assigneeIds.includes(p.user_id)}
                       onChange={() => toggleAssignee(p.user_id)}
                     />
@@ -772,7 +776,7 @@ export default function NewTaskPage() {
                   <label className="block text-sm font-medium">スケジュール</label>
                   <div className="mt-2 space-y-3">
                     {newProjectSchedules.map((item, index) => (
-                      <div key={index} className="rounded-lg border p-3 space-y-2">
+                      <div key={index} className="space-y-2 rounded-lg border p-3 sm:p-4">
                         <div>
                           <label className="block text-xs text-gray-600">イベント名</label>
                           <input
@@ -799,10 +803,10 @@ export default function NewTaskPage() {
 
                         <button
                           type="button"
-                          className="text-sm text-red-600"
+                          className="text-left text-sm text-red-600 underline-offset-2 hover:underline"
                           onClick={() => removeProjectScheduleRow(index)}
                         >
-                          この行を削除
+                          このスケジュールを削除
                         </button>
                       </div>
                     ))}
@@ -810,7 +814,7 @@ export default function NewTaskPage() {
 
                   <button
                     type="button"
-                    className="mt-3 rounded-md border px-3 py-2 text-sm"
+                    className="mt-3 w-full rounded-md border px-3 py-2 text-sm sm:w-auto"
                     onClick={addProjectScheduleRow}
                   >
                     ＋ スケジュールを追加
@@ -844,9 +848,9 @@ export default function NewTaskPage() {
             )}
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <button
-              className="rounded-md border px-4 py-2 font-medium disabled:opacity-50"
+              className="w-full rounded-md border px-4 py-2 font-medium disabled:opacity-50 sm:w-auto"
               type="submit"
               disabled={saving}
             >
@@ -855,7 +859,7 @@ export default function NewTaskPage() {
 
             <button
               type="button"
-              className="rounded-md border px-4 py-2 font-medium disabled:opacity-50"
+              className="w-full rounded-md border px-4 py-2 font-medium disabled:opacity-50 sm:w-auto"
               disabled={saving || projectSelection !== "__new__"}
               onClick={onCreateProjectOnly}
             >

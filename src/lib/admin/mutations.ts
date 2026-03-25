@@ -1,4 +1,5 @@
-import { supabase } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
+const supabase = createClient();
 import {
   canEditDisplayName,
   canEditDepartments,

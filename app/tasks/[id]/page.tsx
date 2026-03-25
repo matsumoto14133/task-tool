@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
+const supabase = createClient();
 import { getDueMeta, dueBadgeClass, formatDue } from "@/lib/taskDue";
 import { buildScopeBadgeLabel, buildUserDisplayLabel } from "@/lib/tasks/taskList";
 import { 
