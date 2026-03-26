@@ -5,7 +5,7 @@ export function canAccessMembershipsPage(role: Role | undefined) {
 }
 
 export function canManageMemberships(role: Role | undefined) {
-  return canAccessMembershipsPage(role);
+  return role === "admin";
 }
 
 export function canManageDepartments(role: Role | undefined) {

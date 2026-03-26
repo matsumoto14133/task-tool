@@ -677,6 +677,10 @@ export async function removeMembershipFromBranch(
     throw new Error("管理者は支部から削除できません");
   }
 
+  if (isSelfMembership(myMembership.user_id, target.user_id)) {
+    throw new Error("自分自身は支部から削除できません");
+  }
+
   const { error } = await supabase
     .from("memberships")
     .delete()
