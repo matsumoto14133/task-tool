@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import TurnstileWidget from "@/components/auth/TurnstileWidget";
@@ -13,6 +13,19 @@ export default function SignupPage() {
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const handleVerify = useCallback((token: string) => {
+    setCaptchaToken(token);
+  }, []);
+
+  const handleExpire = useCallback(() => {
+    setCaptchaToken(null);
+  }, []);
+
+  const handleWidgetError = useCallback(() => {
+    setCaptchaToken(null);
+    setStatus("❌ 認証確認の読み込みに失敗しました。再読み込みしてください。");
+  }, []);
 
   const onSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,16 +91,9 @@ export default function SignupPage() {
           </div>
 
           <TurnstileWidget
-            onVerify={(token) => {
-              setCaptchaToken(token);
-            }}
-            onExpire={() => {
-              setCaptchaToken(null);
-            }}
-            onError={() => {
-              setCaptchaToken(null);
-              setStatus("❌ 認証確認の読み込みに失敗しました。再読み込みしてください。");
-            }}
+            onVerify={handleVerify}
+            onExpire={handleExpire}
+            onError={handleWidgetError}
           />
 
           <button

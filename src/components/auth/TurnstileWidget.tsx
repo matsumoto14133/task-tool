@@ -35,6 +35,22 @@ export default function TurnstileWidget({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
 
+  const onVerifyRef = useRef(onVerify);
+  const onExpireRef = useRef(onExpire);
+  const onErrorRef = useRef(onError);
+
+  useEffect(() => {
+    onVerifyRef.current = onVerify;
+  }, [onVerify]);
+
+  useEffect(() => {
+    onExpireRef.current = onExpire;
+  }, [onExpire]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
   useEffect(() => {
     const sitekey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
     if (!sitekey) return;
@@ -50,13 +66,13 @@ export default function TurnstileWidget({
         sitekey,
         theme: "auto",
         callback: (token: string) => {
-          onVerify(token);
+          onVerifyRef.current?.(token);
         },
         "expired-callback": () => {
-          onExpire?.();
+          onExpireRef.current?.();
         },
         "error-callback": () => {
-          onError?.();
+          onErrorRef.current?.();
         },
       });
     };
@@ -65,18 +81,22 @@ export default function TurnstileWidget({
       'script[src="https://challenges.cloudflare.com/turnstile/v0/api.js"]'
     ) as HTMLScriptElement | null;
 
+    let handleLoad: (() => void) | null = null;
+
     if (existingScript) {
       if (window.turnstile) {
         renderWidget();
       } else {
-        existingScript.addEventListener("load", renderWidget, { once: true });
+        handleLoad = () => renderWidget();
+        existingScript.addEventListener("load", handleLoad, { once: true });
       }
     } else {
       const script = document.createElement("script");
       script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
       script.async = true;
       script.defer = true;
-      script.addEventListener("load", renderWidget, { once: true });
+      handleLoad = () => renderWidget();
+      script.addEventListener("load", handleLoad, { once: true });
       document.head.appendChild(script);
     }
 
@@ -87,7 +107,7 @@ export default function TurnstileWidget({
         widgetIdRef.current = null;
       }
     };
-  }, [onVerify, onExpire, onError]);
+  }, []);
 
   return <div ref={containerRef} />;
 }

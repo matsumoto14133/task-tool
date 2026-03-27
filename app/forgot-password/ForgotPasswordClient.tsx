@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import TurnstileWidget from "@/components/auth/TurnstileWidget";
 import { getBaseUrl } from "@/lib/env/getBaseUrl";
@@ -14,6 +14,19 @@ export default function ForgotPasswordClient() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const handleVerify = useCallback((token: string) => {
+    setCaptchaToken(token);
+    }, []);
+
+    const handleExpire = useCallback(() => {
+    setCaptchaToken(null);
+    }, []);
+
+    const handleWidgetError = useCallback(() => {
+    setCaptchaToken(null);
+    setErrorMsg("認証確認の読み込みに失敗しました。再読み込みしてください。");
+    }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,16 +94,9 @@ export default function ForgotPasswordClient() {
           {successMsg && <p className="text-sm text-green-600">✅ {successMsg}</p>}
 
           <TurnstileWidget
-            onVerify={(token) => {
-              setCaptchaToken(token);
-            }}
-            onExpire={() => {
-              setCaptchaToken(null);
-            }}
-            onError={() => {
-              setCaptchaToken(null);
-              setErrorMsg("認証確認の読み込みに失敗しました。再読み込みしてください。");
-            }}
+            onVerify={handleVerify}
+            onExpire={handleExpire}
+            onError={handleWidgetError}
           />
 
           <button
