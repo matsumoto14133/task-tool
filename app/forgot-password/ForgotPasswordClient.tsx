@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import TurnstileWidget from "@/components/auth/TurnstileWidget";
+import { getBaseUrl } from "@/lib/env/getBaseUrl";
 
 const supabase = createClient();
 
@@ -27,7 +28,7 @@ export default function ForgotPasswordClient() {
     }
 
     try {
-      const redirectTo = `${window.location.origin}/reset-password`;
+      const redirectTo = `${getBaseUrl()}/reset-password`;
 
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo,
