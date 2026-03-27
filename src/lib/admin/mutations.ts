@@ -24,57 +24,6 @@ export type UpdateDisplayNameInput = {
   displayName: string;
 };
 
-export async function updateDisplayName(
-  input: UpdateDisplayNameInput
-): Promise<void> {
-  const nextName = input.displayName.trim();
-
-  if (!nextName) {
-    throw new Error("表示名を入力してください");
-  }
-
-  const { data: userData, error: userErr } = await supabase.auth.getUser();
-
-  if (userErr) {
-    throw new Error(userErr.message);
-  }
-
-  if (!userData.user) {
-    throw new Error("認証されていません");
-  }
-
-  const { data: ms, error: msErr } = await fetchMyMembership(userData.user.id);
-
-  if (msErr) {
-    throw new Error(msErr.message);
-  }
-
-  const myMembership = (ms?.[0] ?? null) as Membership | null;
-
-  if (!myMembership) {
-    throw new Error("あなたの memberships が未登録です（admin配布が必要）");
-  }
-
-  if (
-    !canEditDisplayName(
-      myMembership.role,
-      myMembership.user_id,
-      input.targetUserId
-    )
-  ) {
-    throw new Error("表示名を変更する権限がありません");
-  }
-
-  const { error } = await supabase
-    .from("profiles")
-    .update({ display_name: nextName })
-    .eq("user_id", input.targetUserId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-}
-
 export type AddDepartmentToUserInput = {
   targetUserId: string;
   departmentId: string;

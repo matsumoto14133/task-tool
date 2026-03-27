@@ -32,7 +32,7 @@ export default function LoginPage() {
     });
 
     if (error) {
-      setStatus(`❌ ${error.message}`);
+      setStatus(`❌ メールまたはパスワードが間違っています。`);
       setLoading(false);
       return;
     }
@@ -88,12 +88,15 @@ export default function LoginPage() {
 
         {status && <p className="mt-4 text-sm">{status}</p>}
 
-        <p className="mt-6 text-sm">
-          アカウントがない？{" "}
-          <Link className="underline" href="/signup">
-            新規登録へ
+        <div className="mt-6 flex flex-wrap justify-between items-center gap-2">
+          <Link href="/signup" className="text-sm underline">
+            新規アカウント作成
           </Link>
-        </p>
+          
+          <Link href="/forgot-password" className="text-sm underline text-right">
+            パスワードを忘れた方
+          </Link>
+        </div>
       </div>
     </main>
   );

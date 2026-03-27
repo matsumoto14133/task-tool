@@ -3,11 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import TurnstileWidget from "@/components/auth/TurnstileWidget";
+
 const supabase = createClient();
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -16,9 +19,18 @@ export default function SignupPage() {
     setLoading(true);
     setStatus(null);
 
+    if (!captchaToken) {
+      setStatus("❌ 認証確認を完了してください。");
+      setLoading(false);
+      return;
+    }
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        captchaToken,
+      },
     });
 
     if (error) {
@@ -28,7 +40,8 @@ export default function SignupPage() {
     }
 
     // Confirm email ON の場合、ここでログイン完了ではなく確認メール送信が走る
-    setStatus("✅ 登録OK。確認メールを送信しました。メール内のリンクを開いてください。");
+    setStatus("✅ 確認メールを送信しました。メール内のリンクを開いてください。");
+    setCaptchaToken(null);
     setLoading(false);
   };
 
@@ -61,8 +74,21 @@ export default function SignupPage() {
               required
               minLength={8}
             />
-            <p className="mt-1 text-xs text-gray-600">8文字以上推奨</p>
+            <p className="mt-1 text-xs text-gray-600">8文字以上</p>
           </div>
+
+          <TurnstileWidget
+            onVerify={(token) => {
+              setCaptchaToken(token);
+            }}
+            onExpire={() => {
+              setCaptchaToken(null);
+            }}
+            onError={() => {
+              setCaptchaToken(null);
+              setStatus("❌ 認証確認の読み込みに失敗しました。再読み込みしてください。");
+            }}
+          />
 
           <button
             className="w-full rounded-md border px-3 py-2 font-medium disabled:opacity-50"

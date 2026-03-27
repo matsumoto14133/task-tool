@@ -23,13 +23,13 @@ import {
   loadAdminMembershipsPageInitialData,
 } from "@/lib/admin/loaders";
 import {
-  updateDisplayName,
   addDepartmentToUser,
   removeDepartmentFromUser,
   updateRole,
   createMembership,
   removeMembershipFromBranch,
 } from "@/lib/admin/mutations";
+import { updateDisplayNameAction } from "./actions";
 
 type MembershipAction = "add" | "remove";
 
@@ -272,7 +272,7 @@ export default function AdminMembershipsClient() {
     setErrorMsg(null);
 
     try {
-      await updateDisplayName({
+      await updateDisplayNameAction({
         targetUserId,
         displayName: editingNames[targetUserId] ?? "",
       });
