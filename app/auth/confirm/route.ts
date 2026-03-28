@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
   const type = requestUrl.searchParams.get("type") as EmailOtpType | null;
 
   const loginUrl = new URL("/login", request.url);
+  const resetPasswordUrl = new URL("/reset-password", request.url);
 
   if (!token_hash || !type) {
     loginUrl.searchParams.set("message", "認証リンクが無効です");
@@ -27,6 +28,10 @@ export async function GET(request: NextRequest) {
       "このリンクはすでに使用済み、または期限切れの可能性があります。アカウント作成済みの場合はそのままログインしてください。"
     );
     return NextResponse.redirect(loginUrl);
+  }
+
+  if (type === "recovery") {
+    return NextResponse.redirect(resetPasswordUrl);
   }
 
   loginUrl.searchParams.set(
