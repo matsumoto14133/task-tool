@@ -1,6 +1,12 @@
 import Link from "next/link";
 import LineLinkCard from "@/components/settings/LineLinkCard";
+import NotificationSettingsCard from "@/components/settings/NotificationSettingsCard";
 import { getLineLinkStatus } from "@/lib/notifications/lineLinkService";
+import {
+  getNotificationSettingsByUserId,
+  getUserNotificationProfile,
+} from "@/lib/notifications/notificationQueries";
+import { buildNotificationSettingsViewModel } from "@/lib/notifications/notificationSettingsService";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function NotificationsSettingsPage() {
@@ -20,7 +26,20 @@ export default async function NotificationsSettingsPage() {
     );
   }
 
-  const { isLinked, lineAccount } = await getLineLinkStatus(supabase, user.id);
+  const [{ isLinked, lineAccount }, settingsResult, profileResult] =
+    await Promise.all([
+      getLineLinkStatus(supabase, user.id),
+      getNotificationSettingsByUserId(supabase, user.id),
+      getUserNotificationProfile(supabase, user.id),
+    ]);
+
+  const settings = settingsResult.data ?? [];
+  const profile = profileResult.data ?? null;
+
+  const vm = buildNotificationSettingsViewModel({
+    profile,
+    settings,
+  });
 
   return (
     <main className="p-6">
@@ -45,6 +64,13 @@ export default async function NotificationsSettingsPage() {
           isLinked={isLinked}
           displayName={lineAccount?.display_name ?? null}
           lineUserId={lineAccount?.line_user_id ?? null}
+        />
+
+        <NotificationSettingsCard
+          dailySummaryTime={vm.dailySummaryTime}
+          plannedAtEnabled={vm.plannedAtEnabled}
+          plannedCustomEnabled={vm.plannedCustomEnabled}
+          plannedCustomMinutes={vm.plannedCustomMinutes}
         />
       </div>
     </main>

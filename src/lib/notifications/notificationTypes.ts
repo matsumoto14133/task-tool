@@ -72,3 +72,11 @@ export type NotificationJobRow = {
   created_at: string;
   updated_at: string;
 };
+
+export type UserNotificationProfileRow = {
+  id: string;
+  user_id: string;
+  daily_summary_time: string; // "09:00:00"
+  created_at: string;
+  updated_at: string;
+};
