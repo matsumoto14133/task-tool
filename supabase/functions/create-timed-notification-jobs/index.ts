@@ -65,25 +65,25 @@ function buildTimedNotificationMessage(target: TimedTargetRow) {
     case "due_one_hour_before":
       return {
         title: "タスク期限通知",
-        body: `まもなくタスク「${target.task_title}」の期限です。\n期限: ${baseText}`,
+        body: `⚠️もうすぐ期限⚠️\n「*${target.task_title}*」\n期限: ${baseText}`,
       };
 
     case "due_at_time":
       return {
         title: "タスク期限通知",
-        body: `タスク「${target.task_title}」の期限時刻です。\n期限: ${baseText}`,
+        body: `⚠️期限時刻です⚠️\n「*${target.task_title}*」\n期限: ${baseText}`,
       };
 
     case "planned_at_time":
       return {
         title: "実施予定通知",
-        body: `タスク「${target.task_title}」の実施予定時刻です。\n予定: ${baseText}`,
+        body: `🗓️実施予定時刻\n「*${target.task_title}*」\n予定: ${baseText}`,
       };
 
     case "planned_custom_before":
       return {
         title: "実施予定通知",
-        body: `まもなくタスク「${target.task_title}」の実施予定です。\n予定: ${baseText}\n通知: ${target.offset_minutes}分前`,
+        body: `🗓️もうすぐ実施予定時刻\n「*${target.task_title}*」\n予定: ${baseText}\n通知: ${target.offset_minutes}分前`,
       };
 
     default:

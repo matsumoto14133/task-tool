@@ -66,6 +66,9 @@ type AssigneeProgress = {
   note: string | null;
   planned_at: string | null;
   updated_at: string;
+  notify_at_planned: boolean;
+  notify_before_planned: boolean;
+  notify_before_minutes: number | null;
 };
 
 function isUuid(v: string) {
@@ -95,12 +98,6 @@ export default function TaskDetailClient() {
   const [me, setMe] = useState<{ id: string; email: string | null } | null>(null);
   const [membership, setMembership] = useState<Membership | null>(null);
   const [departments, setDepartments] = useState<Dept[]>([]);
-
-  const [notifyAtStart, setNotifyAtStart] = useState(false);
-  const [notifyBeforeEnabled, setNotifyBeforeEnabled] = useState(true);
-  const [notifyBeforeMinutes, setNotifyBeforeMinutes] = useState("30");
-  const [notifyPreviousDayEnabled, setNotifyPreviousDayEnabled] = useState(false);
-  const [notifyPreviousDayTime, setNotifyPreviousDayTime] = useState("09:00");
 
   const isManagerOrAdmin =
     membership?.role === "manager" || membership?.role === "admin";
@@ -209,7 +206,9 @@ export default function TaskDetailClient() {
       // 2) assignees
       const { data: assigneesData, error: assigneesErr } = await supabase
         .from("task_assignees")
-        .select("user_id, status, note, planned_at, updated_at")
+        .select(
+          "user_id, status, note, planned_at, updated_at, notify_at_planned, notify_before_planned, notify_before_minutes"
+        )
         .eq("task_id", taskId);
 
       if (assigneesErr) throw assigneesErr;
@@ -220,7 +219,12 @@ export default function TaskDetailClient() {
 
       const nextMap: Record<string, AssigneeProgress> = {};
       for (const row of rows) {
-        nextMap[row.user_id] = row;
+        nextMap[row.user_id] = {
+          ...row,
+          notify_at_planned: row.notify_at_planned ?? true,
+          notify_before_planned: row.notify_before_planned ?? true,
+          notify_before_minutes: row.notify_before_minutes ?? 30,
+        };
       }
       setAssigneeProgressMap(nextMap);
 
@@ -421,7 +425,10 @@ export default function TaskDetailClient() {
             user_id: me.id,
             status: "todo",
             note: "",
+            planned_at: null,
             updated_at: new Date().toISOString(),
+            notify_at_planned: true,
+            notify_before_minutes: null,
           }),
           planned_at: nextPlannedAt,
           updated_at: new Date().toISOString(),
@@ -429,6 +436,56 @@ export default function TaskDetailClient() {
       }));
     } catch (e: any) {
       setError(e?.message ?? "実施予定日時の更新に失敗しました");
+    } finally {
+      setSavingUserId(null);
+    }
+  }
+
+  async function updateMyNotificationSettings(input: {
+    notifyAtPlanned: boolean;
+    notifyBeforePlanned: boolean;
+    notifyBeforeMinutes: number | null;
+  }) {
+    if (!task || !me) return;
+
+    setSavingUserId(me.id);
+    setError(null);
+
+    try {
+      const { error: updErr } = await supabase
+        .from("task_assignees")
+        .update({
+          notify_at_planned: input.notifyAtPlanned,
+          notify_before_planned: input.notifyBeforePlanned,
+          notify_before_minutes: input.notifyBeforeMinutes,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("task_id", task.id)
+        .eq("user_id", me.id);
+
+      if (updErr) throw updErr;
+
+      setAssigneeProgressMap((prev) => ({
+        ...prev,
+        [me.id]: {
+          ...(prev[me.id] ?? {
+            user_id: me.id,
+            status: "todo",
+            note: "",
+            planned_at: null,
+            updated_at: new Date().toISOString(),
+            notify_at_planned: true,
+            notify_before_planned: true,
+            notify_before_minutes: 30,
+          }),
+          notify_at_planned: input.notifyAtPlanned,
+          notify_before_planned: input.notifyBeforePlanned,
+          notify_before_minutes: input.notifyBeforeMinutes,
+          updated_at: new Date().toISOString(),
+        },
+      }));
+    } catch (e: any) {
+      setError(e?.message ?? "通知設定の更新に失敗しました");
     } finally {
       setSavingUserId(null);
     }
@@ -446,6 +503,32 @@ export default function TaskDetailClient() {
     const minutes = String(date.getMinutes()).padStart(2, "0");
 
     return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+
+  function updateAssigneeNotification(
+    userId: string,
+    patch: {
+      notify_at_planned?: boolean;
+      notify_before_planned?: boolean;
+      notify_before_minutes?: number | null;
+    }
+  ) {
+    setAssigneeProgressMap((prev) => ({
+      ...prev,
+      [userId]: {
+        ...(prev[userId] ?? {
+          user_id: userId,
+          status: "todo",
+          note: "",
+          planned_at: null,
+          updated_at: new Date().toISOString(),
+          notify_at_planned: true,
+          notify_before_planned: true,
+          notify_before_minutes: 30,
+        }),
+        ...patch,
+      },
+    }));
   }
 
   return (
@@ -726,45 +809,63 @@ export default function TaskDetailClient() {
                             <label className="flex items-center gap-2">
                               <input
                                 type="checkbox"
-                                checked={notifyAtStart}
-                                onChange={(e) => setNotifyAtStart(e.target.checked)}
+                                checked={progress?.notify_at_planned ?? true}
+                                onChange={(e) =>
+                                  updateAssigneeNotification(uid, {
+                                    notify_at_planned: e.target.checked,
+                                  })
+                                }
+                                disabled={savingUserId === uid}
                               />
-                              <span>実施予定時刻</span>
+                              <span>実施予定時刻に通知</span>
                             </label>
 
                             <label className="flex flex-wrap items-center gap-2">
                               <input
                                 type="checkbox"
-                                checked={notifyBeforeEnabled}
-                                onChange={(e) => setNotifyBeforeEnabled(e.target.checked)}
+                                checked={progress?.notify_before_planned ?? true}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  updateAssigneeNotification(uid, {
+                                    notify_before_planned: checked,
+                                  });
+                                }}
+                                disabled={savingUserId === uid}
                               />
                               <span>実施予定</span>
                               <input
                                 type="number"
                                 min={1}
                                 className="w-20 rounded-md border px-2 py-1"
-                                value={notifyBeforeMinutes}
-                                onChange={(e) => setNotifyBeforeMinutes(e.target.value)}
-                                disabled={!notifyBeforeEnabled}
+                                value={progress?.notify_before_minutes ?? 30}
+                                onChange={(e) =>
+                                  updateAssigneeNotification(uid, {
+                                    notify_before_minutes: e.target.value
+                                      ? Number(e.target.value)
+                                      : 30,
+                                  })
+                                }
+                                disabled={savingUserId === uid || !(progress?.notify_before_planned ?? true)}
                               />
-                              <span>分前</span>
+                              <span>分前に通知</span>
                             </label>
 
-                            <label className="flex flex-wrap items-center gap-2">
-                              <input
-                                type="checkbox"
-                                checked={notifyPreviousDayEnabled}
-                                onChange={(e) => setNotifyPreviousDayEnabled(e.target.checked)}
-                              />
-                              <span>実施前日</span>
-                              <input
-                                type="time"
-                                className="rounded-md border px-2 py-1"
-                                value={notifyPreviousDayTime}
-                                onChange={(e) => setNotifyPreviousDayTime(e.target.value)}
-                                disabled={!notifyPreviousDayEnabled}
-                              />
-                            </label>
+                            <div>
+                              <button
+                                type="button"
+                                className="rounded-md border px-3 py-2 text-sm"
+                                onClick={() =>
+                                  updateMyNotificationSettings({
+                                    notifyAtPlanned: progress?.notify_at_planned ?? true,
+                                    notifyBeforePlanned: progress?.notify_before_planned ?? true,
+                                    notifyBeforeMinutes: progress?.notify_before_minutes ?? 30,
+                                  })
+                                }
+                                disabled={savingUserId === uid}
+                              >
+                                {savingUserId === uid ? "保存中..." : "通知設定を保存"}
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>

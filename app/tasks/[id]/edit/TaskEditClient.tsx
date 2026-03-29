@@ -91,6 +91,20 @@ function isUuid(v: string) {
   );
 }
 
+function toDatetimeLocalValue(value: string | null | undefined) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 export default function TaskEditClient() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -276,7 +290,7 @@ export default function TaskEditClient() {
       }
 
       const due = (taskData as Task).due_at;
-      setDueDraft(due ? new Date(due).toISOString().slice(0, 16) : "");
+      setDueDraft(toDatetimeLocalValue(taskData.due_at));
       setAttachmentUrlDraft((taskData as Task).attachment_url ?? "");
       setScopeTypeDraft((taskData as Task).scope_type);
       setScopeIdDraft((taskData as Task).scope_id ?? "");

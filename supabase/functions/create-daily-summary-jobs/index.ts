@@ -11,6 +11,7 @@ type SummaryTargetRow = {
   task_id: string;
   task_title: string;
   target_at: string;
+  daily_summary_time: string;
 };
 
 function pad2(value: number) {
@@ -32,7 +33,7 @@ function formatJstHm(iso: string) {
   }).format(new Date(iso));
 }
 
-function buildDailySummaryScheduledFor(nowIso: string) {
+function buildDailySummaryScheduledFor(nowIso: string, dailySummaryTime: string) {
   const now = new Date(nowIso);
   const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
 
@@ -40,8 +41,11 @@ function buildDailySummaryScheduledFor(nowIso: string) {
   const month = jst.getUTCMonth();
   const date = jst.getUTCDate();
 
-  // JST 09:00
-  const scheduledJst = new Date(Date.UTC(year, month, date, 9, 0, 0));
+  const [hourStr, minuteStr] = dailySummaryTime.slice(0, 5).split(":");
+  const hour = Number(hourStr);
+  const minute = Number(minuteStr);
+
+  const scheduledJst = new Date(Date.UTC(year, month, date, hour, minute, 0));
   const scheduledUtcMillis = scheduledJst.getTime() - 9 * 60 * 60 * 1000;
 
   return new Date(scheduledUtcMillis).toISOString();
@@ -67,7 +71,7 @@ function buildDailySummaryMessage(targets: SummaryTargetRow[]) {
   const lines: string[] = ["本日の通知まとめ", ""];
 
   if (dueToday.length > 0) {
-    lines.push("【今日が期限】");
+    lines.push("【今日が期限⚠️】");
     for (const item of dueToday) {
       lines.push(`・${formatJstHm(item.target_at)} ${item.task_title}`);
     }
@@ -75,7 +79,7 @@ function buildDailySummaryMessage(targets: SummaryTargetRow[]) {
   }
 
   if (dueTomorrow.length > 0) {
-    lines.push("【明日が期限】");
+    lines.push("【明日が期限👀】");
     for (const item of dueTomorrow) {
       lines.push(`・${formatJstHm(item.target_at)} ${item.task_title}`);
     }
@@ -83,7 +87,7 @@ function buildDailySummaryMessage(targets: SummaryTargetRow[]) {
   }
 
   if (plannedToday.length > 0) {
-    lines.push("【今日の実施予定】");
+    lines.push("【今日の実施予定🗓️】");
     for (const item of plannedToday) {
       lines.push(`・${formatJstHm(item.target_at)} ${item.task_title}`);
     }
@@ -99,7 +103,7 @@ function buildDailySummaryMessage(targets: SummaryTargetRow[]) {
   }
 
   return {
-    title: "本日の通知まとめ",
+    title: "本日のタスク一覧通知",
     body: lines.join("\n").trim(),
   };
 }
@@ -128,33 +132,37 @@ Deno.serve(async () => {
     byUser.set(row.user_id, current);
   }
 
-  const scheduledFor = buildDailySummaryScheduledFor(nowIso);
-  let createdCount = 0;
+let createdCount = 0;
 
-  for (const [userId, rows] of byUser.entries()) {
-    const message = buildDailySummaryMessage(rows);
-    const dedupeKey = buildDailySummaryDedupeKey(userId, nowIso);
+for (const [userId, rows] of byUser.entries()) {
+  const message = buildDailySummaryMessage(rows);
+  const dedupeKey = buildDailySummaryDedupeKey(userId, nowIso);
+  const scheduledFor = buildDailySummaryScheduledFor(
+    nowIso,
+    rows[0].daily_summary_time
+  );
 
-    const { error: upsertError } = await supabase
-      .from("notification_jobs")
-      .upsert(
-        {
-          user_id: userId,
-          channel: "line",
-          notification_type: "task_due",
-          task_id: null,
-          assignee_user_id: userId,
-          scheduled_for: scheduledFor,
-          dedupe_key: dedupeKey,
-          title: message.title,
-          body: message.body,
-          payload: {
-            type: "daily_summary",
-            items: rows,
-          },
+  const { error: upsertError } = await supabase
+    .from("notification_jobs")
+    .upsert(
+      {
+        user_id: userId,
+        channel: "line",
+        notification_type: "task_due",
+        task_id: null,
+        assignee_user_id: userId,
+        scheduled_for: scheduledFor,
+        dedupe_key: dedupeKey,
+        title: message.title,
+        body: message.body,
+        payload: {
+          type: "daily_summary",
+          items: rows,
+          dailySummaryTime: rows[0].daily_summary_time,
         },
-        { onConflict: "dedupe_key", ignoreDuplicates: true }
-      );
+      },
+      { onConflict: "dedupe_key", ignoreDuplicates: true }
+    );
 
     if (upsertError) {
       console.error("daily summary upsert error", upsertError);

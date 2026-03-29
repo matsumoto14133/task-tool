@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState, useTransition } from "react";
 import { issueLineLinkTokenAction } from "../../../app/settings/notifications/actions";
 
@@ -7,6 +8,8 @@ type Props = {
   isLinked: boolean;
   displayName: string | null;
   lineUserId: string | null;
+  lineAddFriendUrl?: string | null;
+  lineQrImageUrl?: string | null;
 };
 
 function formatExpiresAt(iso: string) {
@@ -23,11 +26,13 @@ export default function LineLinkCard({
   isLinked,
   displayName,
   lineUserId,
+  lineAddFriendUrl,
+  lineQrImageUrl,
 }: Props) {
   const [isPending, startTransition] = useTransition();
-  const [resultMessage, setResultMessage] = useState<string>("");
-  const [issuedToken, setIssuedToken] = useState<string>("");
-  const [expiresAt, setExpiresAt] = useState<string>("");
+  const [resultMessage, setResultMessage] = useState("");
+  const [issuedToken, setIssuedToken] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
 
   const handleIssueToken = () => {
     startTransition(async () => {
@@ -62,8 +67,8 @@ export default function LineLinkCard({
 
           {isLinked ? (
             <div className="mt-2 space-y-1 text-gray-700">
-              <p>LINE表示名: {displayName ?? "未取得"}</p>
-              <p>LINEユーザーID: {lineUserId ?? "未取得"}</p>
+              {displayName ? <p>LINE表示名: {displayName}</p> : null}
+              {lineUserId ? <p>LINEユーザーID: {lineUserId}</p> : null}
             </div>
           ) : (
             <p className="mt-2 text-gray-700">
@@ -75,18 +80,48 @@ export default function LineLinkCard({
         <div className="rounded-lg border p-4">
           <h3 className="font-medium">連携手順</h3>
           <ol className="mt-2 space-y-1 text-sm text-gray-700">
-            <li>1. 下のボタンで連携コードを発行</li>
-            <li>2. LINE公式アカウントを友だち追加</li>
-            <li>3. 発行されたコードをLINEで送信</li>
-            <li>4. webhook側で照合して連携完了</li>
+            <li>1. 公式LINEを友だち追加</li>
+            <li>2. 下のボタンで連携コードを発行（10分間有効）</li>
+            <li>3. 発行されたコードを公式LINEのチャットで送信</li>
           </ol>
+
+          {(lineAddFriendUrl || lineQrImageUrl) && (
+            <div className="mt-4 rounded-lg border bg-gray-50 p-4">
+              <p className="text-sm font-medium text-gray-900">公式LINE</p>
+
+              {lineAddFriendUrl ? (
+                <div className="mt-2">
+                  <a
+                    href={lineAddFriendUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 underline break-all"
+                  >
+                    {lineAddFriendUrl}
+                  </a>
+                </div>
+              ) : null}
+
+              {lineQrImageUrl ? (
+                <div className="mt-4">
+                  <Image
+                    src={lineQrImageUrl}
+                    alt="公式LINE QRコード"
+                    width={180}
+                    height={180}
+                    className="rounded border"
+                  />
+                </div>
+              ) : null}
+            </div>
+          )}
 
           <div className="mt-4">
             <button
               type="button"
               onClick={handleIssueToken}
               disabled={isPending}
-              className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full md:w-auto rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isPending ? "発行中..." : "連携コードを発行"}
             </button>
