@@ -45,9 +45,6 @@ export async function fetchProfileByEmail(targetEmail: string) {
     .eq("email", targetEmail)
     .limit(1);
 
-  console.log("[fetchProfileByEmail] targetEmail =", targetEmail);
-  console.log("[fetchProfileByEmail] result =", result);
-
   return result;
 }
 

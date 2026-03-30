@@ -29,7 +29,7 @@ import {
   createMembership,
   removeMembershipFromBranch,
 } from "@/lib/admin/mutations";
-import { updateDisplayNameAction } from "./actions";
+import { updateDisplayNameAction, createMembershipAction } from "./actions";
 
 type MembershipAction = "add" | "remove";
 
@@ -187,7 +187,7 @@ export default function AdminMembershipsClient() {
 
     try {
       if (membershipAction === "add") {
-        await createMembership({
+        await createMembershipAction({
           email: trimmedEmail,
           role: "member",
         });
