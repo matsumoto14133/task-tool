@@ -145,21 +145,31 @@ async function getValidLineLinkToken(
   supabase: SupabaseClient,
   token: string
 ) {
-  const result = await supabase
+  const rawResult = await supabase
     .from("line_link_tokens")
     .select("*")
     .eq("token", token)
-    .is("used_at", null)
     .maybeSingle<LineLinkTokenRow>();
 
   console.log("[getValidLineLinkToken] token =", token);
-  console.log("[getValidLineLinkToken] result =", result);
+  console.log("[getValidLineLinkToken] rawResult =", rawResult);
 
-  if (result.error || !result.data) {
-    return result;
+  if (rawResult.error || !rawResult.data) {
+    return rawResult;
   }
 
-  const expiresAt = new Date(result.data.expires_at);
+  console.log("[getValidLineLinkToken] raw used_at =", rawResult.data.used_at);
+  console.log("[getValidLineLinkToken] raw expires_at =", rawResult.data.expires_at);
+
+  if (rawResult.data.used_at) {
+    console.log("[getValidLineLinkToken] token already used");
+    return {
+      data: null,
+      error: null,
+    };
+  }
+
+  const expiresAt = new Date(rawResult.data.expires_at);
   const now = new Date();
 
   console.log("[getValidLineLinkToken] expiresAt ISO =", expiresAt.toISOString());
@@ -170,13 +180,14 @@ async function getValidLineLinkToken(
   );
 
   if (expiresAt.getTime() <= now.getTime()) {
+    console.log("[getValidLineLinkToken] token expired");
     return {
       data: null,
       error: null,
     };
   }
 
-  return result;
+  return rawResult;
 }
 
 async function markLineLinkTokenUsed(
@@ -223,8 +234,13 @@ export async function linkLineUserFromToken(
     lineUserId: string;
   }
 ) {
+  console.log("[linkLineUserFromToken] input =", input);
+
   const { data: existingAccount, error: existingAccountError } =
     await getLineAccountByLineUserId(supabase, input.lineUserId);
+
+  console.log("[linkLineUserFromToken] existingAccount =", existingAccount);
+  console.log("[linkLineUserFromToken] existingAccountError =", existingAccountError);
 
   if (existingAccountError) throw existingAccountError;
   if (existingAccount) {
@@ -236,6 +252,9 @@ export async function linkLineUserFromToken(
     input.token
   );
 
+  console.log("[linkLineUserFromToken] tokenError =", tokenError);
+  console.log("[linkLineUserFromToken] tokenRow =", tokenRow);
+
   if (tokenError) throw tokenError;
   if (!tokenRow) {
     throw new Error("連携コードが無効か、有効期限切れです。");
@@ -246,6 +265,8 @@ export async function linkLineUserFromToken(
     line_user_id: input.lineUserId,
   });
 
+  console.log("[linkLineUserFromToken] upsertError =", upsertError);
+
   if (upsertError) throw upsertError;
 
   const { error: usedError } = await markLineLinkTokenUsed(
@@ -253,6 +274,8 @@ export async function linkLineUserFromToken(
     tokenRow.id,
     input.lineUserId
   );
+
+  console.log("[linkLineUserFromToken] usedError =", usedError);
 
   if (usedError) throw usedError;
 

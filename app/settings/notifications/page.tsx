@@ -8,8 +8,8 @@ import { createClient } from "@/lib/supabase/server";
 
 export default async function NotificationsSettingsPage() {
   const supabase = await createClient();
-  const lineAddFriendUrl = "https://lin.ee/VUvXB7t";
-  const lineQrImageUrl = "/images/line-official-qr.png";
+  const lineAddFriendUrl = "https://lin.ee/yJKsMCT"; // テスト：https://lin.ee/VUvXB7t
+  const lineQrImageUrl = "/images/line-official-qr.png"; // テスト：/images/line-official-qr-test.png
 
   const {
     data: { user },

@@ -15,12 +15,21 @@ if (!LINE_CHANNEL_ACCESS_TOKEN || !LINE_CHANNEL_SECRET) {
 }
 
 Deno.serve(async (req) => {
+  console.log("[line-webhook] invoked", {
+    method: req.method,
+    url: req.url,
+    at: new Date().toISOString(),
+  });
+
   if (req.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405 });
   }
 
   const bodyText = await req.text();
   const signature = req.headers.get("x-line-signature");
+
+  console.log("[line-webhook] received body", bodyText);
+  console.log("[line-webhook] signature exists =", Boolean(signature));
 
   const valid = await verifyLineSignature({
     body: bodyText,
@@ -35,6 +44,8 @@ Deno.serve(async (req) => {
   const body = parseLineWebhookBody(bodyText);
   const events = body.events ?? [];
   const supabase = createServiceRoleClient();
+
+  console.log("[line-webhook] events.length =", events.length);
 
   for (const event of events) {
     if (event.type !== "message") continue;
