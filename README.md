@@ -8,7 +8,7 @@
 ## 0. 本番で採用する構成（新project）
 
 ### Vercel
-- 本番用 Project 名:task-tool-lbjv
+- 本番用 Project 名:task-tool-prod
 - 本番用 Project URL:https://www.tasktool-dot-jp-hiroshima.jp
 - GitHub Repository:task-tool
 - Production Branch:`main`
@@ -37,8 +37,8 @@
 ## 1. テスト環境で採用する構成
 
 ### Vercel
-- 本番用 Project 名:task-tool-lbjv
-- 本番用 Project URL:https://www.tasktool-dot-jp-hiroshima.jp
+- テスト用 Project 名:task-tool-lbjv
+- テスト用 Project URL:
 - GitHub Repository:task-tool
 - Production Branch:`main`
 - 備考:
@@ -50,13 +50,13 @@
 - main branch:`main`
 - 自動デプロイ:
   - [x] 有効
-  - 備考:main への push で Vercel の本番プロジェクトに自動デプロイされる
+  - 備考:main への push で Vercel のテストプロジェクトに自動デプロイされる
 
-### 本番ドメイン
+### テストドメイン
 - 正式URL:
-  - `https://www.tasktool-dot-jp-hiroshima.jp`
+  - ``
 - apex:
-  - `https://tasktool-dot-jp-hiroshima.jp`
+  - ``
 - 方針:
   - apex は www にリダイレクト
   - 本番URL表記は www ありで統一
@@ -75,7 +75,7 @@
 - `NEXT_PUBLIC_SITE_URL`
   - `https://www.tasktool-dot-jp-hiroshima.jp`
 - `NEXT_PUBLIC_TURNSTILE_SITE_KEY`
-  - `0x4AAAAAACwZ3uXIKVJyZvoe`
+  - `0x4AAAAAACx8XDZDC_K1e_oh`
 
 ### Preview
 - `NEXT_PUBLIC_SUPABASE_URL`
