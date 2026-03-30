@@ -1,11 +1,40 @@
 # タスク管理ツール 本番環境設定メモ
 
-最終更新日: 2026-03-29  
+最終更新日: 2026-03-30 
 管理者: 松本晃平
 
 ---
 
-## 1. 本番で採用する構成
+## 0. 本番で採用する構成（新project）
+
+### Vercel
+- 本番用 Project 名:task-tool-lbjv
+- 本番用 Project URL:https://www.tasktool-dot-jp-hiroshima.jp
+- GitHub Repository:task-tool
+- Production Branch:`main`
+- 備考:
+  - 旧 Vercel Project は使わない
+  - 今後の本番反映はこの Project に対して行う
+
+### GitHub
+- Repository 名:task-tool
+- main branch:`main`
+- 自動デプロイ:
+  - [x] 有効
+  - 備考:main への push で Vercel の本番プロジェクトに自動デプロイされる
+
+### 本番ドメイン
+- 正式URL:
+  - `https://www.tasktool-dot-jp-hiroshima.jp`
+- apex:
+  - `https://tasktool-dot-jp-hiroshima.jp`
+- 方針:
+  - apex は www にリダイレクト
+  - 本番URL表記は www ありで統一
+
+---
+
+## 1. テスト環境で採用する構成
 
 ### Vercel
 - 本番用 Project 名:task-tool-lbjv
@@ -36,7 +65,19 @@
 
 ## 2. Vercel 環境変数
 
-### Production and Preview
+### Production
+- `NEXT_PUBLIC_SUPABASE_URL`
+  - `https://dgnecjszhaiuqhvvblsq.supabase.co`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  - `sb_publishable_tBAgsaLc7EiNAcBXCXaaZQ_zcf7DLXc`
+- `SUPABASE_SERVICE_ROLE_KEY`
+  - `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRnbmVjanN6aGFpdXFodnZibHNxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDg1ODY4NywiZXhwIjoyMDkwNDM0Njg3fQ.7ucOicICsgc1n7nes8DkxBOAtLchXsp9kBRb953mTRg`
+- `NEXT_PUBLIC_SITE_URL`
+  - `https://www.tasktool-dot-jp-hiroshima.jp`
+- `NEXT_PUBLIC_TURNSTILE_SITE_KEY`
+  - `0x4AAAAAACwZ3uXIKVJyZvoe`
+
+### Preview
 - `NEXT_PUBLIC_SUPABASE_URL`
   - `https://astzazujnpmdnzpbimcb.supabase.co`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`

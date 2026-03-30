@@ -32,8 +32,7 @@ export default function NotificationSettingsCard(props: Props) {
         <div className="rounded-lg border bg-gray-50 p-4">
           <h3 className="font-medium text-gray-900">固定で送信される通知</h3>
           <ul className="mt-2 space-y-1 text-sm text-gray-700">
-            <li>・期限前日一覧通知</li>
-            <li>・期限当日一覧通知</li>
+            <li>・期限前日、当日一覧通知</li>
             <li>・期限1時間前通知</li>
             <li>・期限時刻通知</li>
           </ul>
@@ -47,7 +46,7 @@ export default function NotificationSettingsCard(props: Props) {
             タスク一覧通知時刻
         </label>
         <p className="mt-1 text-sm text-gray-600">
-            今日が期限のタスク・明日が期限のタスク・今日の実施予定をまとめて1日1回以下の時刻で送ります。
+            今日・明日が期限のタスク、今日・明日の実施予定をまとめて1日1回以下の時刻で送ります。
         </p>
         <input
             type="time"
