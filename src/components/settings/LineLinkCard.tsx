@@ -2,7 +2,10 @@
 
 import Image from "next/image";
 import { useState, useTransition } from "react";
-import { issueLineLinkTokenAction } from "../../../app/settings/notifications/actions";
+import {
+  issueLineLinkTokenAction,
+  unlinkLineAccountAction,
+} from "../../../app/settings/notifications/actions";
 
 type Props = {
   isLinked: boolean;
@@ -33,6 +36,9 @@ export default function LineLinkCard({
   const [resultMessage, setResultMessage] = useState("");
   const [issuedToken, setIssuedToken] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  const [linkedState, setLinkedState] = useState(isLinked);
+  const [linkedDisplayName, setLinkedDisplayName] = useState(displayName);
+  const [linkedLineUserId, setLinkedLineUserId] = useState(lineUserId);
 
   const handleIssueToken = () => {
     startTransition(async () => {
@@ -50,6 +56,25 @@ export default function LineLinkCard({
     });
   };
 
+  const handleUnlink = () => {
+    const ok = window.confirm("LINE連携を解除しますか？");
+    if (!ok) return;
+
+    startTransition(async () => {
+      const result = await unlinkLineAccountAction();
+
+      setResultMessage(result.message);
+
+      if (result.ok) {
+        setIssuedToken("");
+        setExpiresAt("");
+        setLinkedState(false);
+        setLinkedDisplayName(null);
+        setLinkedLineUserId(null);
+      }
+    });
+  };
+
   return (
     <section className="rounded-xl border bg-white p-5 shadow-sm">
       <div className="flex flex-col gap-4">
@@ -62,13 +87,13 @@ export default function LineLinkCard({
 
         <div className="rounded-lg border bg-gray-50 p-4 text-sm">
           <p className="font-medium text-gray-900">
-            連携状態: {isLinked ? "連携済み" : "未連携"}
+            連携状態: {linkedState ? "連携済み" : "未連携"}
           </p>
 
-          {isLinked ? (
+          {linkedState ? (
             <div className="mt-2 space-y-1 text-gray-700">
-              {displayName ? <p>LINE表示名: {displayName}</p> : null}
-              {lineUserId ? <p>LINEユーザーID: {lineUserId}</p> : null}
+              {linkedDisplayName ? <p>LINE表示名: {linkedDisplayName}</p> : null}
+              {linkedLineUserId ? <p>LINEユーザーID: {linkedLineUserId}</p> : null}
             </div>
           ) : (
             <p className="mt-2 text-gray-700">
@@ -116,15 +141,26 @@ export default function LineLinkCard({
             </div>
           )}
 
-          <div className="mt-4">
+          <div className="mt-4 flex flex-col gap-2 md:flex-row">
             <button
               type="button"
               onClick={handleIssueToken}
               disabled={isPending}
               className="w-full md:w-auto rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isPending ? "発行中..." : "連携コードを発行"}
+              {isPending ? "処理中..." : "連携コードを発行"}
             </button>
+
+            {linkedState ? (
+              <button
+                type="button"
+                onClick={handleUnlink}
+                disabled={isPending}
+                className="w-full md:w-auto rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isPending ? "処理中..." : "LINE連携を解除"}
+              </button>
+            ) : null}
           </div>
 
           {resultMessage ? (

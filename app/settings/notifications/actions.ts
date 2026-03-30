@@ -91,3 +91,58 @@ export async function saveNotificationSettingsAction(input: {
     };
   }
 }
+
+export type UnlinkLineAccountActionState = {
+  ok: boolean;
+  message: string;
+};
+
+export async function unlinkLineAccountAction(): Promise<UnlinkLineAccountActionState> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return {
+      ok: false,
+      message: "ログイン情報を確認できませんでした。",
+    };
+  }
+
+  try {
+    const { error: lineAccountsError } = await supabase
+      .from("line_accounts")
+      .delete()
+      .eq("user_id", user.id);
+
+    if (lineAccountsError) {
+      throw lineAccountsError;
+    }
+
+    const { error: lineLinkTokensError } = await supabase
+      .from("line_link_tokens")
+      .delete()
+      .eq("user_id", user.id);
+
+    if (lineLinkTokensError) {
+      throw lineLinkTokensError;
+    }
+
+    revalidatePath("/settings/notifications");
+
+    return {
+      ok: true,
+      message: "LINE連携を解除しました。",
+    };
+  } catch (error) {
+    console.error("unlinkLineAccountAction error", error);
+
+    return {
+      ok: false,
+      message: "LINE連携の解除に失敗しました。",
+    };
+  }
+}
