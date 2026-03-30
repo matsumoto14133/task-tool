@@ -145,13 +145,38 @@ async function getValidLineLinkToken(
   supabase: SupabaseClient,
   token: string
 ) {
-  return supabase
+  const result = await supabase
     .from("line_link_tokens")
     .select("*")
     .eq("token", token)
     .is("used_at", null)
-    .gt("expires_at", new Date().toISOString())
     .maybeSingle<LineLinkTokenRow>();
+
+  console.log("[getValidLineLinkToken] token =", token);
+  console.log("[getValidLineLinkToken] result =", result);
+
+  if (result.error || !result.data) {
+    return result;
+  }
+
+  const expiresAt = new Date(result.data.expires_at);
+  const now = new Date();
+
+  console.log("[getValidLineLinkToken] expiresAt ISO =", expiresAt.toISOString());
+  console.log("[getValidLineLinkToken] now ISO =", now.toISOString());
+  console.log(
+    "[getValidLineLinkToken] expired =",
+    expiresAt.getTime() <= now.getTime()
+  );
+
+  if (expiresAt.getTime() <= now.getTime()) {
+    return {
+      data: null,
+      error: null,
+    };
+  }
+
+  return result;
 }
 
 async function markLineLinkTokenUsed(
