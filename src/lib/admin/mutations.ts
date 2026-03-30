@@ -303,11 +303,19 @@ export async function createMembership(
 
   const { data: prof, error: pErr } = await fetchProfileByEmail(targetEmail);
 
+  console.log("[createMembership] targetEmail =", targetEmail);
+  console.log("[createMembership] fetchProfileByEmail result =", {
+    prof,
+    pErr,
+  });
+
   if (pErr) {
     throw new Error(pErr.message);
   }
 
-  const target = prof?.[0];
+  const target = prof?.[0] ?? null;
+
+  console.log("[createMembership] target =", target);
 
   if (!target) {
     throw new Error(

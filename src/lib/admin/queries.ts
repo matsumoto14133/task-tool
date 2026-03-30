@@ -39,11 +39,16 @@ export async function fetchMembershipDepartments(branchId: string) {
 }
 
 export async function fetchProfileByEmail(targetEmail: string) {
-  return await supabase
+  const result = await supabase
     .from("profiles")
     .select("user_id, email, display_name")
     .eq("email", targetEmail)
     .limit(1);
+
+  console.log("[fetchProfileByEmail] targetEmail =", targetEmail);
+  console.log("[fetchProfileByEmail] result =", result);
+
+  return result;
 }
 
 export async function fetchMembershipsByUserId(userId: string) {
