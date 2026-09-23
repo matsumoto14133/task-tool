@@ -11,8 +11,15 @@ const SUPABASE_SECRET_KEYS = JSON.parse(
 const SUPABASE_SECRET_KEY =
   SUPABASE_SECRET_KEYS["edge_functions_runtime_202609"];
 
+const CRON_CALLER_SECRET_KEY =
+  SUPABASE_SECRET_KEYS["cron_run_notifications_202609"];
+
 if (!SUPABASE_SECRET_KEY) {
   throw new Error("Missing Edge Functions Supabase secret key");
+}
+
+if (!CRON_CALLER_SECRET_KEY) {
+  throw new Error("Missing run-notifications Cron caller secret key");
 }
 
 const supabase = createClient(
@@ -482,7 +489,25 @@ async function sendNotifications(nowIso: string) {
   return { processedCount, sentCount, failedCount };
 }
 
-Deno.serve(async () => {
+// Secretキー方式に変更 2026-09-23
+Deno.serve(async (req) => {
+  const callerApiKey = req.headers.get("apikey");
+
+  if (!callerApiKey || callerApiKey !== CRON_CALLER_SECRET_KEY) {
+    console.warn("run-notifications unauthorized request");
+
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: "Unauthorized",
+      }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
+
   const nowIso = new Date().toISOString();
 
   try {
