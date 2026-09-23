@@ -282,13 +282,21 @@ export async function linkLineUserFromToken(
   return { userId: tokenRow.user_id };
 }
 
+// Secretキー方式に変更 2026-09-23
 export function createServiceRoleClient() {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const rawSecretKeys = Deno.env.get("SUPABASE_SECRET_KEYS");
 
-  if (!supabaseUrl || !serviceRoleKey) {
+  if (!supabaseUrl || !rawSecretKeys) {
     throw new Error("Supabase environment variables are missing.");
   }
 
-  return createClient(supabaseUrl, serviceRoleKey);
+  const secretKeys = JSON.parse(rawSecretKeys) as Record<string, string>;
+  const secretKey = secretKeys["edge_functions_runtime_202609"];
+
+  if (!secretKey) {
+    throw new Error("Missing Edge Functions Supabase secret key.");
+  }
+
+  return createClient(supabaseUrl, secretKey);
 }
