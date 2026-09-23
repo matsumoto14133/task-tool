@@ -1,9 +1,23 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+// Secretキー方式に変更 2026-09-23
+const SUPABASE_SECRET_KEYS = JSON.parse(
+  Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}",
+) as Record<string, string>;
+
+const SUPABASE_SECRET_KEY =
+  SUPABASE_SECRET_KEYS["edge_functions_runtime_202609"];
+
+if (!SUPABASE_SECRET_KEY) {
+  throw new Error("Missing Edge Functions Supabase secret key");
+}
+
+const supabase = createClient(
+  SUPABASE_URL,
+  SUPABASE_SECRET_KEY,
+);
 
 type SummaryTargetRow = {
   user_id: string;

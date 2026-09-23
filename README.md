@@ -70,8 +70,9 @@
   - `https://dgnecjszhaiuqhvvblsq.supabase.co`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
   - `sb_publishable_tBAgsaLc7EiNAcBXCXaaZQ_zcf7DLXc`
-- `SUPABASE_SERVICE_ROLE_KEY`
-  - `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRnbmVjanN6aGFpdXFodnZibHNxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDg1ODY4NywiZXhwIjoyMDkwNDM0Njg3fQ.7ucOicICsgc1n7nes8DkxBOAtLchXsp9kBRb953mTRg`
+- `SUPABASE_SECRET_KEY`
+  - 各環境のSecret管理機能へ設定する
+  - READMEやGitには記載しない
 - `NEXT_PUBLIC_SITE_URL`
   - `https://www.tasktool-dot-jp-hiroshima.jp`
 - `NEXT_PUBLIC_TURNSTILE_SITE_KEY`
@@ -82,8 +83,9 @@
   - `https://astzazujnpmdnzpbimcb.supabase.co`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
   - `sb_publishable_aUOJDkOtLYxV8SS8Gxdusw_irAJccW5`
-- `SUPABASE_SERVICE_ROLE_KEY`
-  - `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.  eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzdHphenVqbnBtZG56cGJpbWNiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTkzMzk2OCwiZXhwIjoyMDg3NTA5OTY4fQ.lgcR0BytexvYzEWhmnrsFp0eMUf1iwYARxdPt0e4edk`
+- `SUPABASE_SECRET_KEY`
+  - 各環境のSecret管理機能へ設定する
+  - READMEやGitには記載しない
 - `NEXT_PUBLIC_SITE_URL`
   - `https://www.tasktool-dot-jp-hiroshima.jp`
 - `NEXT_PUBLIC_TURNSTILE_SITE_KEY`
@@ -94,8 +96,9 @@
   - `https://astzazujnpmdnzpbimcb.supabase.co`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
   - `sb_publishable_aUOJDkOtLYxV8SS8Gxdusw_irAJccW5`
-- `SUPABASE_SERVICE_ROLE_KEY`
-  - `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.  eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzdHphenVqbnBtZG56cGJpbWNiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTkzMzk2OCwiZXhwIjoyMDg3NTA5OTY4fQ.lgcR0BytexvYzEWhmnrsFp0eMUf1iwYARxdPt0e4edk`
+- `SUPABASE_SECRET_KEY`
+  - 各環境のSecret管理機能へ設定する
+  - READMEやGitには記載しない
 - `NEXT_PUBLIC_SITE_URL`
   - `http://localhost:3000`
 - `NEXT_PUBLIC_TURNSTILE_SITE_KEY`
