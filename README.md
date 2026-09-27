@@ -398,6 +398,27 @@ verify_jwt = false
 - `run-notifications`は`apikey`ヘッダーをコード内で検証する
 - Secret値をコードへ直接記載しない
 
+### 通知対象取得RPCの実行権限
+
+通知対象を取得する以下のRPCは、Edge Functionsのサーバークライアントからのみ実行します。
+
+- `get_daily_summary_targets`
+- `get_due_day_before_notification_targets`
+- `get_timed_notification_targets`
+
+実行権限は次のとおりです。
+
+- `service_role`：実行可能
+- `anon`：実行不可
+- `authenticated`：実行不可
+- `public`：実行不可
+
+ここでいう`service_role`はデータベースの実行ロールを指し、無効化済みのlegacy `service_role` keyを再有効化するものではありません。
+
+ブラウザや通常のログインユーザーへ実行権限を付与しないでください。Edge FunctionsではSecret API keyを使用します。
+
+`debug_is_department_in_users_branch`はデバッグ用Functionのため、Data APIからは実行できません。必要な確認はSupabase SQL Editorの`postgres`ロールから行います。
+
 ### Secret API keyの命名規則
 
 例：
