@@ -562,7 +562,53 @@ git diff -- supabase/migrations
 
 ## 13. 通常の開発フロー
 
-### 1. mainを最新化
+### 原則
+
+* 本番ブランチ`main`へ直接コミットしない
+* 1つの改修につき1つの作業ブランチを作成する
+* マージ済みの作業ブランチを次の改修で再利用しない
+* コードを変更する前に、現在のブランチを確認する
+* ユーザーの未関連変更を同じcommitへ含めない
+* Git履歴の書き換えやforce pushを行わない
+
+Pull RequestをGitHub上でマージしても、ローカルのブランチは自動的に`main`へ切り替わりません。
+
+次の作業を始める前に、必ず現在のブランチと作業ツリーを確認してください。
+
+```bash
+git branch --show-current
+git status --short
+```
+
+---
+
+### 1. 作業開始前の状態確認
+
+```bash
+git branch --show-current
+git status --short
+```
+
+確認項目：
+
+* 現在のブランチ
+* commitしていない変更の有無
+* 前回の作業ブランチに残っていないか
+* 未追跡ファイルの有無
+
+`git status --short`に変更が表示された場合は、すぐに`git switch`や`git pull`を実行せず、変更内容を確認します。
+
+```bash
+git diff
+```
+
+既存変更を勝手に削除、上書き、commitしないでください。
+
+---
+
+### 2. mainを最新化
+
+作業ツリーが空であることを確認してから実行します。
 
 ```bash
 git switch main
@@ -570,64 +616,417 @@ git pull --ff-only origin main
 git status --short
 ```
 
-### 2. 作業ブランチを作成
+確認項目：
+
+* 現在のブランチが`main`
+* `origin/main`の最新内容を取得済み
+* `git status --short`に何も表示されない
+
+---
+
+### 3. 作業ブランチを作成
+
+コードを変更する前に、改修内容に対応するブランチを作成します。
 
 ```bash
 git switch -c <type>/<short-description>
 ```
 
-例：
+命名例：
 
 ```text
+fix/login-after-logout
+perf/remove-dashboard-focus-reload
 feat/add-task-filter
-fix/duplicate-user-fetch
 chore/update-dependencies
+docs/update-operation-guide
 ```
 
-### 3. ローカルで開発・確認
+ブランチ種別：
+
+| 種別       | 用途       |
+| -------- | -------- |
+| `fix/`   | バグ修正     |
+| `perf/`  | 性能改善     |
+| `feat/`  | 機能追加     |
+| `chore/` | 保守・設定変更  |
+| `docs/`  | ドキュメント変更 |
+
+作成後、必ず現在のブランチを確認します。
+
+```bash
+git branch --show-current
+git status --short
+```
+
+期待する作業ブランチ名が表示されるまでは、ファイルを変更しないでください。
+
+---
+
+### 4. 改修前の整理
+
+変更を始める前に、以下を整理します。
+
+1. 現象または要求
+2. 期待値
+3. 再現条件
+4. 影響範囲
+5. 関連ファイル
+6. DB・認証・権限への影響
+7. Local／Preview／Productionへの影響
+8. 最小の変更方針
+9. 検証方法
+10. ロールバック方法
+
+不明なコードや設定は推測せず、検索やログ確認によって調査します。
+
+---
+
+### 5. ローカルで開発・確認
+
+通常起動：
 
 ```bash
 npm run dev
-npm run build
-git diff --check
 ```
-
-### 4. commit・push
-
-```bash
-git status --short
-git add <files>
-git commit -m "<type>: <summary>"
-git push -u origin <branch-name>
-```
-
-### 5. Vercel Previewで確認
 
 最低限、以下を確認します。
 
-- Preview Deploymentが`Ready`
-- 開発Supabaseへ接続している
-- ログイン・ログアウト
-- 対象機能
-- Vercel Runtime Logs
-- 本番データへ影響していない
+* 開発Supabaseへ接続している
+* 本番Supabaseへ接続していない
+* 開発用アカウントでログインできる
+* 開発データが表示される
+* 変更対象機能が期待どおり動作する
+* 関連機能に回帰がない
+* ブラウザConsoleに想定外のエラーがない
+* ログアウトできる
 
-### 6. Pull Request
+変更後：
 
-- base：`main`
-- compare：作業ブランチ
-- Secretや`.env`が差分にないことを確認
-- Preview確認結果を記載
-- mainへマージ
+```bash
+git diff --check
+./node_modules/.bin/tsc --noEmit
+npm run build
+git status --short
+git diff
+```
 
-### 7. Production確認
+ESLintが正常に動作する環境では、変更ファイルを指定して実行します。
 
-- Production Deploymentが`Ready`
-- 正式ドメインへアクセスできる
-- ログイン・ダッシュボード表示
-- 変更機能
-- Vercel Production Logs
-- 必要に応じてSupabase Logs
+```bash
+npx eslint <changed-file>
+```
+
+ESLintが停止する場合は無理に継続せず、停止位置と実行環境を記録します。
+
+---
+
+### 6. commit前の確認
+
+最初に、現在のブランチを再確認します。
+
+```bash
+git branch --show-current
+git status --short
+git diff --check
+git diff
+```
+
+確認項目：
+
+* `main`ではなく作業ブランチにいる
+* ブランチ名が今回の改修内容と一致している
+* 変更ファイルが想定範囲だけ
+* 未関連変更が含まれていない
+* `.env`やSecretが含まれていない
+* デバッグ用コードや不要なログが残っていない
+
+Secretを確認します。
+
+```bash
+git grep -nE \
+  'SUPABASE_SERVICE_ROLE_KEY|sb_secret_|eyJ[A-Za-z0-9_-]*\.' \
+  || true
+```
+
+実際のSecret値が表示された場合はcommitしないでください。
+
+`.env.local`や`supabase/functions/.env`はGit管理しません。
+
+---
+
+### 7. 関係ファイルだけをadd
+
+変更対象のファイルだけを指定します。
+
+```bash
+git add <files>
+```
+
+ステージされた差分を確認します。
+
+```bash
+git diff --cached --check
+git diff --cached --stat
+git diff --cached
+```
+
+`git add .`は未関連変更を含める可能性があるため、原則として使用しません。
+
+---
+
+### 8. commit
+
+```bash
+git commit -m "<type>: <summary>"
+```
+
+例：
+
+```text
+fix: submit captcha token during login
+perf: stop dashboard reload on window focus
+docs: document development workflow and LINE notifications
+```
+
+commit後に確認します。
+
+```bash
+git status --short
+git log -1 --oneline
+```
+
+確認項目：
+
+* commitが期待する作業ブランチに作成されている
+* 作業ツリーに未commitの変更が残っていない
+* commitメッセージが変更内容を表している
+
+---
+
+### 9. mainとの差分確認
+
+push前に、Pull Requestへ含まれるcommitとファイルを確認します。
+
+```bash
+git log --oneline main..HEAD
+git diff --stat main...HEAD
+git diff main...HEAD
+```
+
+確認項目：
+
+* 今回の作業commitだけが表示される
+* 変更ファイルが想定範囲だけ
+* 過去の別作業のcommitが含まれていない
+* Secretや`.env`が含まれていない
+
+想定していないcommitやファイルが含まれている場合は、pushせず原因を確認します。
+
+---
+
+### 10. push
+
+```bash
+git push -u origin <branch-name>
+```
+
+push後：
+
+```bash
+git status --short
+git branch -vv
+```
+
+確認項目：
+
+* push先のブランチ名が正しい
+* `main`へ直接pushしていない
+* ローカルブランチが対応するリモートブランチを追跡している
+* 作業ツリーが空
+
+---
+
+### 11. Vercel Previewで確認
+
+push後、Vercel Project `task-tool-prod`にPreview Deploymentが作成されます。
+
+最低限、以下を確認します。
+
+* Preview Deploymentが`Ready`
+* Branchが作業ブランチと一致
+* Environmentが`Preview`
+* 開発Supabaseへ接続している
+* 開発データが表示される
+* 本番データへ影響していない
+* 変更対象機能が期待どおり動作する
+* Vercel Runtime Logsに想定外のエラーがない
+* 想定外の401・403・500がない
+
+認証関連の変更では、Preview URLが開発SupabaseのRedirect URLsに許可されていることも確認します。
+
+---
+
+### 12. Pull Request
+
+確認項目：
+
+* base：`main`
+* compare：作業ブランチ
+* Files changedが想定範囲だけ
+* `.env`やSecretが含まれていない
+* Previewが`Ready`
+* Local／Previewの検証結果が記載されている
+* DB変更がある場合はMigrationが含まれている
+* README更新の要否を確認済み
+
+問題がなければ`main`へマージします。
+
+---
+
+### 13. Production確認
+
+`main`へのマージ後、Vercel Production Deploymentが`Ready`になるまで待ちます。
+
+最低限、以下を確認します。
+
+* 正式ドメインへアクセスできる
+* ログインできる
+* 本番データのダッシュボードが表示される
+* ログアウトできる
+* 変更対象機能が期待どおり動作する
+* Vercel Production Logsに想定外のエラーがない
+* 必要に応じてSupabase Logsを確認する
+* 想定外の401・403・500がない
+
+---
+
+### 14. 作業完了後
+
+Pull Requestをマージしても、ローカルでは作業ブランチのままです。
+
+次の改修を始める前に、必ず以下を実行します。
+
+```bash
+git switch main
+git pull --ff-only origin main
+git fetch --prune
+git branch --show-current
+git status --short
+```
+
+期待結果：
+
+* 現在のブランチが`main`
+* `main`が`origin/main`と同期している
+* 作業ツリーが空
+
+次の改修では、最新の`main`から新しい作業ブランチを作成します。
+
+---
+
+### 誤ったブランチで変更した場合
+
+#### まだcommitしていない場合
+
+変更を一時退避します。
+
+```bash
+git stash push -m "wip: <変更内容>" -- <files>
+```
+
+最新の`main`から正しいブランチを作成します。
+
+```bash
+git switch main
+git pull --ff-only origin main
+git status --short
+git switch -c <correct-branch>
+```
+
+対象のstashを確認します。
+
+```bash
+git stash list
+git stash show --stat <対象のstash>
+```
+
+正しいブランチへ変更を反映します。
+
+```bash
+git stash apply <対象のstash>
+git status --short
+git diff
+```
+
+変更内容を確認できるまでは、stashを削除しません。
+
+---
+
+#### すでにcommitしたが、まだpushしていない場合
+
+誤ったcommitのハッシュを確認します。
+
+```bash
+git log -1 --oneline
+```
+
+未commitの別変更がある場合は、対象ファイルだけを一時退避します。
+
+```bash
+git stash push -m "wip: <変更内容>" -- <files>
+git status --short
+```
+
+最新の`main`から正しいブランチを作成します。
+
+```bash
+git switch main
+git pull --ff-only origin main
+git status --short
+git switch -c <correct-branch>
+```
+
+誤ったブランチに作成したcommitを、正しいブランチへコピーします。
+
+```bash
+git cherry-pick <commit-hash>
+```
+
+コピー後に確認します。
+
+```bash
+git status --short
+git log --oneline -3
+git diff --stat main...HEAD
+git diff main...HEAD
+```
+
+元の誤ったブランチはpushしません。
+
+`git reset --hard`、rebase、commitのamend、force pushなどによる履歴の書き換えは行いません。
+
+---
+
+#### 誤ったブランチをすでにpushした場合
+
+以下の操作は行わないでください。
+
+* 誤ったPull Requestをマージする
+* force pushする
+* 独断でリモートブランチを削除する
+* Git履歴を書き換える
+
+まず、以下を確認します。
+
+```bash
+git branch --show-current
+git status --short
+git log --oneline -5
+git branch -vv
+```
+
+確認結果をもとに、正しいブランチの作成方法とリモートブランチの扱いを決定します。
 
 ---
 
