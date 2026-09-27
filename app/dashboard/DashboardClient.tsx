@@ -501,16 +501,6 @@ export default function DashboardPage() { // ページコンポーネント（�
 
   useEffect(() => {
     loadDashboard();
-
-    const onFocus = () => {
-      loadDashboard();
-    };
-
-    window.addEventListener("focus", onFocus);
-
-    return () => {
-      window.removeEventListener("focus", onFocus);
-    };
   }, []);
 
   const updateMyStatus = async (taskId: string, status: TaskStatus) => {
