@@ -1,23 +1,49 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import TurnstileWidget from "@/components/auth/TurnstileWidget";
+
 const supabase = createClient();
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const handleVerify = useCallback((token: string) => {
+    setCaptchaToken(token);
+  }, []);
+
+  const handleExpire = useCallback(() => {
+    setCaptchaToken(null);
+  }, []);
+
+  const handleWidgetError = useCallback(() => {
+    setCaptchaToken(null);
+    setStatus(
+      "❌ 認証確認の読み込みに失敗しました。再読み込みしてください。"
+    );
+  }, []);
+
+  const resetCaptcha = () => {
+    setCaptchaToken(null);
+    setCaptchaKey((current) => current + 1);
+  };
 
   // すでにログインしていたら dashboard へ
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
-      if (data.session) router.replace("/dashboard");
+      if (data.session) {
+        router.replace("/dashboard");
+      }
     })();
   }, [router]);
 
@@ -26,20 +52,36 @@ export default function LoginPage() {
     setLoading(true);
     setStatus(null);
 
+    if (!captchaToken) {
+      setStatus("❌ 認証確認を完了してください。");
+      setLoading(false);
+      return;
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
-      email,
+      email: email.trim(),
       password,
+      options: {
+        captchaToken,
+      },
     });
 
     if (error) {
-      setStatus(`❌ メールまたはパスワードが間違っています。`);
+      setStatus(
+        error.code === "captcha_failed"
+          ? "❌ 認証確認に失敗しました。もう一度お試しください。"
+          : "❌ メールまたはパスワードが間違っています。"
+      );
+      resetCaptcha();
       setLoading(false);
       return;
     }
 
     if (!data.session) {
-      // Confirm email ON で未確認のとき、ここに来ることがある
-      setStatus("⚠️ ログインできませんでした。メール確認が完了しているか確認してください。");
+      setStatus(
+        "⚠️ ログインできませんでした。メール確認が完了しているか確認してください。"
+      );
+      resetCaptcha();
       setLoading(false);
       return;
     }
@@ -77,6 +119,13 @@ export default function LoginPage() {
             />
           </div>
 
+          <TurnstileWidget
+            key={captchaKey}
+            onVerify={handleVerify}
+            onExpire={handleExpire}
+            onError={handleWidgetError}
+          />
+
           <button
             className="w-full rounded-md border px-3 py-2 font-medium disabled:opacity-50"
             type="submit"
@@ -88,12 +137,15 @@ export default function LoginPage() {
 
         {status && <p className="mt-4 text-sm">{status}</p>}
 
-        <div className="mt-6 flex flex-wrap justify-between items-center gap-2">
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
           <Link href="/signup" className="text-sm underline">
             新規アカウント作成
           </Link>
-          
-          <Link href="/forgot-password" className="text-sm underline text-right">
+
+          <Link
+            href="/forgot-password"
+            className="text-right text-sm underline"
+          >
             パスワードを忘れた方
           </Link>
         </div>
