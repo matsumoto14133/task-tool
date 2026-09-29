@@ -552,6 +552,19 @@ Secret値を取得するSQL結果を共有しないでください。
 - Migration SQLをレビューしてから本番へ反映する
 - VaultのSecret値はMigrationへ含めない
 
+### branch所属とタスク作成の整合性
+
+現在は、1ユーザーにつき1つのbranch所属だけを許可します。
+
+- `memberships_user_id_unique`により、`memberships.user_id`の重複をDBで禁止する
+- UI側の事前確認に加えてDB制約を設け、複数管理者による同時登録でも複数所属を防止する
+- 将来、複数branch所属と所属切替を実装する場合は、新しいMigrationで一意制約を削除する
+- 複数所属へ変更する際は、所属切替UI、権限判定、RLS、通知対象、`.single()`や`.limit(1)`を使用している取得処理もあわせて見直す
+
+`tasks_insert_same_branch_or_self` Policyにより、ログインユーザーがタスクを作成する際は、指定した`project_id`がタスクと同じbranchに所属することを確認します。
+
+SQL Editorの`postgres`ロールなど、RLSをバイパスする管理操作にはこのPolicyが適用されないため、手動DB操作時はbranchの整合性を確認してください。
+
 ### Migration確認
 
 ```bash
@@ -603,7 +616,7 @@ git status --short
 
 ---
 
-### 1. 作業開始前の状態確認
+### 13-1. 作業開始前の状態確認
 
 ```bash
 git branch --show-current
@@ -627,7 +640,7 @@ git diff
 
 ---
 
-### 2. mainを最新化
+### 13-2. mainを最新化
 
 作業ツリーが空であることを確認してから実行します。
 
@@ -645,7 +658,7 @@ git status --short
 
 ---
 
-### 3. 作業ブランチを作成
+### 13-3. 作業ブランチを作成
 
 コードを変更する前に、改修内容に対応するブランチを作成します。
 
@@ -684,7 +697,7 @@ git status --short
 
 ---
 
-### 4. 改修前の整理
+### 13-4. 改修前の整理
 
 変更を始める前に、以下を整理します。
 
@@ -703,7 +716,7 @@ git status --short
 
 ---
 
-### 5. ローカルで開発・確認
+### 13-5. ローカルで開発・確認
 
 通常起動：
 
@@ -742,7 +755,7 @@ ESLintが停止する場合は無理に継続せず、停止位置と実行環�
 
 ---
 
-### 6. commit前の確認
+### 13-6. commit前の確認
 
 最初に、現在のブランチを再確認します。
 
@@ -776,7 +789,7 @@ git grep -nE \
 
 ---
 
-### 7. 関係ファイルだけをadd
+### 13-7. 関係ファイルだけをadd
 
 変更対象のファイルだけを指定します。
 
@@ -796,7 +809,7 @@ git diff --cached
 
 ---
 
-### 8. commit
+### 13-8. commit
 
 ```bash
 git commit -m "<type>: <summary>"
@@ -825,7 +838,7 @@ git log -1 --oneline
 
 ---
 
-### 9. mainとの差分確認
+### 13-9. mainとの差分確認
 
 push前に、Pull Requestへ含まれるcommitとファイルを確認します。
 
@@ -846,7 +859,7 @@ git diff main...HEAD
 
 ---
 
-### 10. push
+### 13-10. push
 
 ```bash
 git push -u origin <branch-name>
@@ -868,7 +881,7 @@ git branch -vv
 
 ---
 
-### 11. Vercel Previewで確認
+### 13-11. Vercel Previewで確認
 
 push後、Vercel Project `task-tool-prod`にPreview Deploymentが作成されます。
 
@@ -888,7 +901,7 @@ push後、Vercel Project `task-tool-prod`にPreview Deploymentが作成されま
 
 ---
 
-### 12. Pull Request
+### 13-12. Pull Request
 
 確認項目：
 
@@ -905,7 +918,7 @@ push後、Vercel Project `task-tool-prod`にPreview Deploymentが作成されま
 
 ---
 
-### 13. Production確認
+### 13-13. Production確認
 
 `main`へのマージ後、Vercel Production Deploymentが`Ready`になるまで待ちます。
 
@@ -922,7 +935,7 @@ push後、Vercel Project `task-tool-prod`にPreview Deploymentが作成されま
 
 ---
 
-### 14. 作業完了後
+### 13-14. 作業完了後
 
 Pull Requestをマージしても、ローカルでは作業ブランチのままです。
 
