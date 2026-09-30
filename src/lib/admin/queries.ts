@@ -4,7 +4,15 @@ const supabase = createClient();
 export async function fetchMyMembership(userId: string) {
   return await supabase
     .from("memberships")
-    .select(`user_id, branch_id, role, profiles ( email, display_name )`)
+    .select(`
+      user_id,
+      branch_id,
+      role,
+      profiles!memberships_user_id_fkey (
+        email,
+        display_name
+      )
+    `)
     .eq("user_id", userId)
     .order("created_at", { ascending: true })
     .limit(1);
@@ -13,7 +21,15 @@ export async function fetchMyMembership(userId: string) {
 export async function fetchBranchMemberships(branchId: string) {
   return await supabase
     .from("memberships")
-    .select(`user_id, branch_id, role, profiles ( email, display_name )`)
+    .select(`
+      user_id,
+      branch_id,
+      role,
+      profiles!memberships_user_id_fkey (
+        email,
+        display_name
+      )
+    `)
     .eq("branch_id", branchId)
     .order("created_at", { ascending: true });
 }

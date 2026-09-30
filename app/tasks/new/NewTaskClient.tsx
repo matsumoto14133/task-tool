@@ -124,7 +124,9 @@ export default function NewTaskClient() {
           branch_id,
           department_id,
           role,
-          branches ( name )
+          branches!memberships_branch_id_fkey (
+            name
+          )
         `)
         .eq("user_id", userData.user.id)
         .order("created_at", { ascending: true })
@@ -192,7 +194,11 @@ export default function NewTaskClient() {
       const { data: memList, error: memErr } = await supabase
         .from("memberships")
         .select(`
-          profiles ( user_id, email, display_name )
+          profiles!memberships_user_id_fkey (
+            user_id,
+            email,
+            display_name
+          )
         `)
         .eq("branch_id", myMembership.branch_id);
 

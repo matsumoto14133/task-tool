@@ -455,6 +455,8 @@ npx supabase functions deploy run-notifications \
   --project-ref <project-ref>
 ```
 
+`run-notifications`と`send-notifications`は、それぞれ通知送信処理を持っています。通知ジョブの取得・状態変更・送信判定を変更した場合は、両Functionへの反映要否を確認し、必要なFunctionを個別にデプロイしてください。
+
 デプロイ後：
 
 ```bash
@@ -1480,6 +1482,7 @@ const redirectTo = `${getBaseUrl()}/reset-password`;
 
 * `line_accounts.is_active = true`
 * 対象タスクの担当者である
+* 対象タスクと同じ支部に現在所属している
 * 担当者ステータスが`done`ではない
 
 | 通知      | タイミング             |
@@ -1511,6 +1514,22 @@ const redirectTo = `${getBaseUrl()}/reset-password`;
 * 送信成功時は`sent`
 * 送信失敗時は再試行し、最大3回失敗すると`failed`
 * 同じ日のタスク一覧通知がすでに存在する場合、設定時刻を変更しても再作成しない
+
+### 支部所属削除時の扱い
+
+ユーザーを支部から削除すると、`memberships`のみを起点として次の処理を行います。
+
+* `membership_departments`の部署所属は自動削除する
+* `profiles`と認証アカウントは保持する
+* `tasks`は保持する
+* `task_assignees`の担当者・進捗・実施予定は履歴として保持する
+* 削除されたユーザーはRLSにより旧支部の情報を閲覧できなくなる
+* `pending`または停止状態の`processing`通知ジョブは`canceled`へ変更する
+* 送信処理開始から5分以内の通知がある場合は、競合防止のため所属削除を中止する
+
+通知送信前には`claim_notification_job`で現在の所属を再確認します。対象タスクと同じ支部に所属していない場合は送信せず、通知ジョブを`canceled`へ変更します。
+
+`notification_jobs`の本文とpayloadはブラウザから直接参照できません。通知対象取得RPCと`claim_notification_job`はEdge Functions用の権限からのみ実行できます。
 
 ### LINE連携
 
