@@ -22,7 +22,9 @@ export async function fetchMyMembership(
     .select(`
       branch_id,
       role,
-      branches ( name )
+      branches!memberships_branch_id_fkey (
+        name
+      )
     `)
     .eq("user_id", userId)
     .order("created_at", { ascending: true })
@@ -41,7 +43,7 @@ export async function fetchBranchUsers(
 ): Promise<BranchUser[]> {
   const { data, error } = await supabase
     .from("memberships")
-    .select(`profiles ( user_id, email, display_name )`)
+    .select(`profiles!memberships_user_id_fkey ( user_id, email, display_name )`)
     .eq("branch_id", branchId);
 
   if (error) {

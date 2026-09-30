@@ -410,15 +410,10 @@ async function getActiveLineAccountByUserId(userId: string) {
     .maybeSingle<LineAccountRow>();
 }
 
-async function markJobProcessing(jobId: string) {
-  return supabase
-    .from("notification_jobs")
-    .update({
-      status: "processing",
-      locked_at: new Date().toISOString(),
-    })
-    .eq("id", jobId)
-    .eq("status", "pending");
+async function claimNotificationJob(jobId: string) {
+  return supabase.rpc("claim_notification_job", {
+    p_job_id: jobId,
+  });
 }
 
 async function markJobSent(jobId: string) {
@@ -430,10 +425,14 @@ async function markJobSent(jobId: string) {
       locked_at: null,
       last_error: null,
     })
-    .eq("id", jobId);
+    .eq("id", jobId)
+    .eq("status", "processing");
 }
 
-async function markJobFailedOrRetry(job: NotificationJobRow, errorMessage: string) {
+async function markJobFailedOrRetry(
+  job: NotificationJobRow,
+  errorMessage: string
+) {
   const nextRetryCount = job.retry_count + 1;
   const nextStatus =
     nextRetryCount >= job.max_retry_count ? "failed" : "pending";
@@ -446,7 +445,8 @@ async function markJobFailedOrRetry(job: NotificationJobRow, errorMessage: strin
       last_error: errorMessage,
       locked_at: null,
     })
-    .eq("id", job.id);
+    .eq("id", job.id)
+    .eq("status", "processing");
 }
 
 async function sendNotifications(nowIso: string) {
@@ -458,15 +458,27 @@ async function sendNotifications(nowIso: string) {
   let failedCount = 0;
 
   for (const job of jobs ?? []) {
-    processedCount += 1;
+    const { data: claimed, error: claimError } =
+      await claimNotificationJob(job.id);
 
-    await markJobProcessing(job.id);
+    if (claimError) {
+      console.error("claim notification job error", claimError);
+      failedCount += 1;
+      continue;
+    }
+
+    if (claimed !== true) {
+      continue;
+    }
+
+    processedCount += 1;
 
     try {
       const { data: lineAccount, error: lineAccountError } =
         await getActiveLineAccountByUserId(job.user_id);
 
       if (lineAccountError) throw lineAccountError;
+
       if (!lineAccount) {
         throw new Error("LINE連携済みアカウントが見つかりません。");
       }
@@ -480,7 +492,10 @@ async function sendNotifications(nowIso: string) {
       sentCount += 1;
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "通知送信に失敗しました。";
+        error instanceof Error
+          ? error.message
+          : "通知送信に失敗しました。";
+
       await markJobFailedOrRetry(job, message);
       failedCount += 1;
     }
